@@ -1,0 +1,76 @@
+# Mnemoquarium
+
+Mnemoquarium is a tiny artificial-life lab for the terminal. Give it any
+phrase and it deterministically turns the words into species, seeds a little
+nutrient field, and lets the resulting memory ecosystem crawl, bloom, split,
+starve, and leave behind a fossil hash.
+
+It is deliberately odd, but useful as a compact Python project:
+
+- pure standard library, no runtime dependencies
+- deterministic simulations from phrase seeds
+- animated ANSI terminal rendering
+- SVG specimen card export
+- JSON snapshot export
+- Markdown field report export
+- installable CLI plus a testable simulation core
+
+## Quick Start
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+mnemoquarium "the vending machine remembers my name" --steps 90 --animate
+```
+
+Run without installation from the repository root:
+
+```bash
+PYTHONPATH=src python3 -m mnemoquarium "library dust with electric teeth" --steps 64
+```
+
+Export a specimen:
+
+```bash
+PYTHONPATH=src python3 -m mnemoquarium \
+  "library dust with electric teeth" \
+  --steps 96 \
+  --export-svg out/specimen.svg \
+  --export-json out/specimen.json \
+  --report out/field-report.md
+```
+
+## What It Does
+
+Each distinct word in the phrase becomes a species. The phrase hash chooses
+its traits: appetite, curiosity, stubbornness, split threshold, lifespan,
+glyph, and color. The organisms roam a wraparound nutrient field, make noisy
+local decisions, eat, reproduce, and occasionally get hit by weird weather
+events like remembering tides or static blooms.
+
+Because all randomness is seeded from the phrase, this command will always
+generate the same final fossil:
+
+```bash
+PYTHONPATH=src python3 -m mnemoquarium "same phrase, same aquarium" --steps 50
+```
+
+## CLI
+
+```text
+usage: mnemoquarium [phrase ...] [--width N] [--height N] [--steps N]
+                    [--population N] [--animate] [--speed SECONDS]
+                    [--no-color] [--export-svg PATH] [--export-json PATH]
+                    [--report PATH]
+```
+
+## Development
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests
+```
+
+The project is intentionally small enough to read in one sitting. The core
+simulation lives in `src/mnemoquarium/model.py`, rendering in
+`src/mnemoquarium/render.py`, and exporters in `src/mnemoquarium/export.py`.
