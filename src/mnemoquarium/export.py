@@ -5,10 +5,11 @@ import json
 
 from .display import dominant_organism, organisms_by_cell
 from .model import World, ranked_species
+from .snapshot import detailed_snapshot
 
 
 def json_document(world: World) -> str:
-    return json.dumps(world.snapshot(), indent=2, sort_keys=True) + "\n"
+    return json.dumps(detailed_snapshot(world), indent=2, sort_keys=True) + "\n"
 
 
 def field_report(world: World) -> str:

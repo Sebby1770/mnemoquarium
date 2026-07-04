@@ -7,6 +7,7 @@ from mnemoquarium.cli import main
 from mnemoquarium.export import field_report, json_document, svg_document
 from mnemoquarium.model import World, make_species, words_from_phrase
 from mnemoquarium.render import render_ansi
+from mnemoquarium.snapshot import HistoryRecorder, detailed_snapshot, load_snapshot
 
 
 class MnemoquariumTests(unittest.TestCase):
@@ -79,6 +80,23 @@ class MnemoquariumTests(unittest.TestCase):
             result = main(["--steps", "0", "--width", "16", "--height", "10"])
         self.assertEqual(result, 0)
         self.assertIn("tick=0", buffer.getvalue())
+
+    def test_snapshot_round_trip_preserves_state(self):
+        world = World.from_phrase("replay me softly", width=20, height=12, population=10).run(12)
+        restored = load_snapshot(detailed_snapshot(world))
+        self.assertEqual(world.fossil_hash(), restored.fossil_hash())
+        self.assertEqual(render_ansi(world, color=False), render_ansi(restored, color=False))
+
+    def test_history_recorder_tracks_population(self):
+        world = World.from_phrase("history check", width=18, height=10, population=8)
+        history = HistoryRecorder(interval=2)
+        history.maybe_record(world)
+        for _ in range(6):
+            world.step()
+            history.maybe_record(world)
+        self.assertGreaterEqual(len(history.entries), 3)
+        self.assertIn("tick", history.entries[0])
+        self.assertIn("species_populations", history.entries[-1])
 
     def test_overcrowded_cells_show_counts(self):
         world = World.from_phrase("crowd", width=16, height=10, population=1)

@@ -64,11 +64,28 @@ hash — a compact fingerprint of the ecosystem's final memory.
 
 ## CLI
 
+Resume from a saved specimen:
+
+```bash
+PYTHONPATH=src python3 -m mnemoquarium --replay out/specimen.json --steps 40
+```
+
+Record a population time series while the habitat runs:
+
+```bash
+PYTHONPATH=src python3 -m mnemoquarium "library dust" --steps 96 \
+  --record-history out/history.json \
+  --history-csv out/history.csv \
+  --history-interval 4
+```
+
 ```text
 usage: mnemoquarium [phrase ...] [--width N] [--height N] [--steps N]
-                    [--population N] [--max-species N] [--animate]
-                    [--speed SECONDS] [--no-color] [--export-svg PATH]
-                    [--export-json PATH] [--report PATH]
+                    [--population N] [--max-species N] [--replay PATH]
+                    [--animate] [--speed SECONDS] [--no-color]
+                    [--export-svg PATH] [--export-json PATH] [--report PATH]
+                    [--record-history PATH] [--history-csv PATH]
+                    [--history-interval N]
 ```
 
 Long non-animated runs print progress to stderr every few ticks. Animation

@@ -85,6 +85,8 @@ class Species:
             "source_word": self.source_word,
             "glyph": self.glyph,
             "hue": self.hue,
+            "ansi_color": self.ansi_color,
+            "seed": self.seed,
             "appetite": self.appetite,
             "curiosity": self.curiosity,
             "stubbornness": self.stubbornness,
