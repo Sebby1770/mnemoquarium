@@ -5,9 +5,10 @@ from pathlib import Path
 import sys
 import time
 
-from .export import field_report, json_document, svg_document
+from .compare import compare_worlds
+from .export import field_report, html_document, json_document, svg_document
 from .model import DEFAULT_PHRASE, World
-from .render import render_ansi, render_legend
+from .render import render_ansi, render_legend, sparkline
 from .snapshot import HistoryRecorder, read_snapshot_file
 
 
@@ -76,6 +77,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="Record history every N ticks.",
     )
+    parser.add_argument("--export-html", type=Path, help="Write a standalone HTML gallery page.")
+    parser.add_argument(
+        "--compare",
+        nargs=2,
+        metavar=("PHRASE_A", "PHRASE_B"),
+        help="Run two phrases with identical settings and print a comparison report.",
+    )
+    parser.add_argument(
+        "--sparkline",
+        action="store_true",
+        help="Show a population sparkline on stderr after the run.",
+    )
     return parser
 
 
@@ -108,6 +121,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"mnemoquarium: {validation_error}", file=sys.stderr)
         return 2
 
+    if args.compare:
+        return run_compare(args)
+
     try:
         world = build_world(args, phrase)
     except (ValueError, OSError) as exc:
@@ -122,12 +138,30 @@ def main(argv: list[str] | None = None) -> int:
     else:
         run_with_progress(world, steps=args.steps, color=color, history=history)
 
+    if args.sparkline and history.entries:
+        populations = [int(entry["population"]) for entry in history.entries]
+        print(f"population {sparkline(populations)}", file=sys.stderr)
+
     export_errors = write_outputs(world, args, history)
     if export_errors:
         for message in export_errors:
             print(f"mnemoquarium: {message}", file=sys.stderr)
         return 1
 
+    return 0
+
+
+def run_compare(args: argparse.Namespace) -> int:
+    left_phrase, right_phrase = args.compare
+    settings = dict(
+        width=args.width,
+        height=args.height,
+        population=args.population,
+        max_species=args.max_species,
+    )
+    left = World.from_phrase(left_phrase, **settings).run(args.steps)
+    right = World.from_phrase(right_phrase, **settings).run(args.steps)
+    print(compare_worlds(left, right))
     return 0
 
 
@@ -198,6 +232,7 @@ def write_outputs(
     outputs: list[tuple[Path | None, str]] = [
         (args.export_svg, svg_document(world)),
         (args.export_json, json_document(world)),
+        (args.export_html, html_document(world)),
         (args.report, field_report(world)),
         (args.record_history, history.to_json()),
         (args.history_csv, history.to_csv()),

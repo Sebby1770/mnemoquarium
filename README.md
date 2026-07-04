@@ -1,6 +1,8 @@
 # Mnemoquarium
 
-Mnemoquarium is a tiny artificial-life lab for the terminal. Give it any
+Mnemoquarium is a tiny artificial-life lab for the terminal.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history. Give it any
 phrase and it deterministically turns the words into species, seeds a little
 nutrient field, and lets the resulting memory ecosystem crawl, bloom, split,
 starve, and leave behind a fossil hash.
@@ -63,6 +65,18 @@ nutrients, tick). Same phrase + dimensions + steps always yields the same
 hash — a compact fingerprint of the ecosystem's final memory.
 
 ## CLI
+
+Compare two phrases side by side:
+
+```bash
+PYTHONPATH=src python3 -m mnemoquarium --compare "neon rain" "static bloom" --steps 64
+```
+
+Export a React Bits–styled HTML gallery page:
+
+```bash
+PYTHONPATH=src python3 -m mnemoquarium "library dust" --steps 48 --export-html out/gallery.html
+```
 
 Resume from a saved specimen:
 

@@ -4,9 +4,10 @@ import unittest
 from unittest.mock import patch
 
 from mnemoquarium.cli import main
-from mnemoquarium.export import field_report, json_document, svg_document
+from mnemoquarium.compare import compare_worlds
+from mnemoquarium.export import field_report, html_document, json_document, svg_document
 from mnemoquarium.model import World, make_species, words_from_phrase
-from mnemoquarium.render import render_ansi
+from mnemoquarium.render import render_ansi, sparkline
 from mnemoquarium.snapshot import HistoryRecorder, detailed_snapshot, load_snapshot
 
 
@@ -97,6 +98,24 @@ class MnemoquariumTests(unittest.TestCase):
         self.assertGreaterEqual(len(history.entries), 3)
         self.assertIn("tick", history.entries[0])
         self.assertIn("species_populations", history.entries[-1])
+
+    def test_html_export_embeds_specimen(self):
+        world = World.from_phrase("html export test", width=18, height=10).run(4)
+        document = html_document(world)
+        self.assertIn("<!doctype html>", document)
+        self.assertIn("reactbits.dev", document)
+        self.assertIn(world.phrase, document)
+
+    def test_compare_reports_differences(self):
+        left = World.from_phrase("alpha tank", width=16, height=10, population=6).run(8)
+        right = World.from_phrase("beta tank", width=16, height=10, population=6).run(8)
+        report = compare_worlds(left, right)
+        self.assertIn("alpha tank", report)
+        self.assertIn("beta tank", report)
+        self.assertIn("fossil", report)
+
+    def test_sparkline_renders_blocks(self):
+        self.assertEqual(len(sparkline([1, 2, 3, 9])), 4)
 
     def test_overcrowded_cells_show_counts(self):
         world = World.from_phrase("crowd", width=16, height=10, population=1)

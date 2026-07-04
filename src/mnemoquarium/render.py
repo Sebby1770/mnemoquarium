@@ -43,6 +43,24 @@ def render_status(world: World) -> str:
     )
 
 
+def sparkline(values: list[int], *, width: int = 24) -> str:
+    if not values:
+        return ""
+    blocks = "▁▂▃▄▅▆▇█"
+    if len(values) > width:
+        stride = len(values) / width
+        sampled = [values[int(index * stride)] for index in range(width)]
+    else:
+        sampled = values
+    minimum = min(sampled)
+    maximum = max(sampled)
+    span = max(1, maximum - minimum)
+    return "".join(
+        blocks[min(len(blocks) - 1, int((value - minimum) / span * (len(blocks) - 1)))]
+        for value in sampled
+    )
+
+
 def render_legend(world: World, *, color: bool = True) -> str:
     lines = [render_status(world)]
     for sp, count in ranked_species(world):
