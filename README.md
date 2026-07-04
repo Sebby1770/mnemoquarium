@@ -2,8 +2,9 @@
 
 Mnemoquarium is a tiny artificial-life lab for the terminal.
 
-See [CHANGELOG.md](CHANGELOG.md) for release history. Give it any
-phrase and it deterministically turns the words into species, seeds a little
+See [CHANGELOG.md](CHANGELOG.md) for release history.
+
+Give it any phrase and it deterministically turns the words into species, seeds a little
 nutrient field, and lets the resulting memory ecosystem crawl, bloom, split,
 starve, and leave behind a fossil hash.
 
