@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 
+from .display import dominant_organism, organisms_by_cell
 from .model import World, ranked_species
 
 
@@ -11,14 +12,15 @@ def json_document(world: World) -> str:
 
 
 def field_report(world: World) -> str:
+    snapshot = world.snapshot()
     lines = [
         "# Mnemoquarium Field Report",
         "",
         f"Phrase: `{world.phrase}`",
         f"Tick: `{world.tick_count}`",
-        f"Fossil hash: `{world.fossil_hash()}`",
+        f"Fossil hash: `{snapshot['fossil_hash']}`",
         f"Population: `{len(world.organisms)}`",
-        f"Nutrient total: `{sum(sum(row) for row in world.nutrients)}`",
+        f"Nutrient total: `{snapshot['nutrient_total']}`",
         "",
         "## Species",
         "",
@@ -86,15 +88,10 @@ def svg_document(world: World, *, cell: int = 12) -> str:
                 f'opacity="{opacity:.2f}"/>'
             )
 
-    strongest: dict[tuple[int, int], tuple[int, int]] = {}
-    for organism in world.organisms:
-        key = (organism.x, organism.y)
-        current = strongest.get(key)
-        if current is None or organism.energy > current[1]:
-            strongest[key] = (organism.species_index, organism.energy)
-
-    for (x, y), (species_index, energy) in strongest.items():
-        sp = world.species[species_index]
+    for (x, y), occupants in organisms_by_cell(world).items():
+        organism = dominant_organism(occupants)
+        sp = world.species[organism.species_index]
+        energy = organism.energy
         radius = max(3, min(cell * 0.48, 2 + energy * 0.18))
         cx = ox + x * cell + cell / 2
         cy = oy + y * cell + cell / 2
@@ -107,6 +104,11 @@ def svg_document(world: World, *, cell: int = 12) -> str:
             f'<text x="{cx:.1f}" y="{cy + 3:.1f}" text-anchor="middle" '
             f'font-size="{max(8, cell - 2)}" fill="#071014">{glyph}</text>'
         )
+        if len(occupants) > 1:
+            parts.append(
+                f'<text x="{cx + cell * 0.28:.1f}" y="{cy - cell * 0.22:.1f}" '
+                f'font-size="8" fill="#d8e3ef">{len(occupants)}</text>'
+            )
 
     legend_y = oy + grid_height + 28
     parts.append(f'<text x="{margin}" y="{legend_y}" class="small">species ledger</text>')

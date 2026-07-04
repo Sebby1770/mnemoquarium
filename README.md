@@ -43,11 +43,11 @@ PYTHONPATH=src python3 -m mnemoquarium \
 
 ## What It Does
 
-Each distinct word in the phrase becomes a species. The phrase hash chooses
-its traits: appetite, curiosity, stubbornness, split threshold, lifespan,
-glyph, and color. The organisms roam a wraparound nutrient field, make noisy
-local decisions, eat, reproduce, and occasionally get hit by weird weather
-events like remembering tides or static blooms.
+Each distinct word in the phrase becomes a species (up to `--max-species`).
+The phrase hash chooses its traits: appetite, curiosity, stubbornness, split
+threshold, lifespan, glyph, and color. The organisms roam a wraparound nutrient
+field, make noisy local decisions, eat, reproduce, and occasionally get hit by
+weird weather events like remembering tides or static blooms.
 
 Because all randomness is seeded from the phrase, this command will always
 generate the same final fossil:
@@ -56,14 +56,23 @@ generate the same final fossil:
 PYTHONPATH=src python3 -m mnemoquarium "same phrase, same aquarium" --steps 50
 ```
 
+### Fossil hash
+
+The fossil hash is a BLAKE2b digest of the full simulation state (organisms,
+nutrients, tick). Same phrase + dimensions + steps always yields the same
+hash — a compact fingerprint of the ecosystem's final memory.
+
 ## CLI
 
 ```text
 usage: mnemoquarium [phrase ...] [--width N] [--height N] [--steps N]
-                    [--population N] [--animate] [--speed SECONDS]
-                    [--no-color] [--export-svg PATH] [--export-json PATH]
-                    [--report PATH]
+                    [--population N] [--max-species N] [--animate]
+                    [--speed SECONDS] [--no-color] [--export-svg PATH]
+                    [--export-json PATH] [--report PATH]
 ```
+
+Long non-animated runs print progress to stderr every few ticks. Animation
+detects non-TTY output and skips screen clears when piped.
 
 ## Development
 
@@ -71,6 +80,10 @@ usage: mnemoquarium [phrase ...] [--width N] [--height N] [--steps N]
 PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
-The project is intentionally small enough to read in one sitting. The core
-simulation lives in `src/mnemoquarium/model.py`, rendering in
-`src/mnemoquarium/render.py`, and exporters in `src/mnemoquarium/export.py`.
+The project is intentionally small enough to read in one sitting:
+
+- `src/mnemoquarium/model.py` — simulation core
+- `src/mnemoquarium/display.py` — shared cell occupancy helpers
+- `src/mnemoquarium/render.py` — ANSI rendering
+- `src/mnemoquarium/export.py` — SVG, JSON, and Markdown exporters
+- `src/mnemoquarium/cli.py` — argument parsing and orchestration

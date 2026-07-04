@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .display import cell_glyph, dominant_organism, organisms_by_cell
 from .model import World, ranked_species
 
 
@@ -17,19 +18,17 @@ def render_ansi(world: World, *, color: bool = True) -> str:
         [nutrient_char(world.nutrients[y][x]) for x in range(world.width)]
         for y in range(world.height)
     ]
-    strongest: dict[tuple[int, int], tuple[int, int]] = {}
-    for organism in world.organisms:
-        key = (organism.x, organism.y)
-        current = strongest.get(key)
-        if current is None or organism.energy > current[1]:
-            strongest[key] = (organism.species_index, organism.energy)
 
-    for (x, y), (species_index, _) in strongest.items():
-        sp = world.species[species_index]
-        glyph = sp.glyph
-        if color:
-            glyph = f"\033[{sp.ansi_color};1m{glyph}{RESET}"
-        cells[y][x] = glyph
+    for (x, y), occupants in organisms_by_cell(world).items():
+        organism = dominant_organism(occupants)
+        sp = world.species[organism.species_index]
+        cells[y][x] = cell_glyph(
+            organism,
+            count=len(occupants),
+            color=color,
+            species_glyph=sp.glyph,
+            ansi_color=sp.ansi_color,
+        )
 
     return "\n".join("".join(row) for row in cells)
 

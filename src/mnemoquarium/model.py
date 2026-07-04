@@ -421,14 +421,14 @@ def choose_glyph(word: str, index: int, used_glyphs: set[str]) -> str:
     candidates = []
     if word and word[0].isalnum():
         candidates.append(word[0].upper())
-    candidates.extend(GLYPHS[(index + offset) % len(GLYPHS)] for offset in range(8))
+    candidates.extend(GLYPHS[(index + offset) % len(GLYPHS)] for offset in range(len(GLYPHS)))
     for glyph in candidates:
         if glyph not in used_glyphs:
             used_glyphs.add(glyph)
             return glyph
-    glyph = GLYPHS[index % len(GLYPHS)]
-    used_glyphs.add(glyph)
-    return glyph
+    fallback = f"{GLYPHS[index % len(GLYPHS)]}{index + 1}"
+    used_glyphs.add(fallback)
+    return fallback
 
 
 def initial_nutrient(seed: int, x: int, y: int, rng: random.Random) -> int:
