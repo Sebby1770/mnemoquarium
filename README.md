@@ -1,5 +1,7 @@
 # Mnemoquarium
 
+Deterministic phrase-fed artificial life. v0.3 adds mutations, predation, drought, and `--census`.
+
 Mnemoquarium is a tiny artificial-life lab for the terminal.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.

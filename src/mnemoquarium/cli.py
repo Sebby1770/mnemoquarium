@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 import time
@@ -89,6 +90,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show a population sparkline on stderr after the run.",
     )
+    parser.add_argument(
+        "--census",
+        action="store_true",
+        help="Print a JSON census (mutations, predations, extinctions) after the run.",
+    )
     return parser
 
 
@@ -141,6 +147,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.sparkline and history.entries:
         populations = [int(entry["population"]) for entry in history.entries]
         print(f"population {sparkline(populations)}", file=sys.stderr)
+
+    if args.census:
+        print(json.dumps(world.census(), indent=2, sort_keys=True))
 
     export_errors = write_outputs(world, args, history)
     if export_errors:

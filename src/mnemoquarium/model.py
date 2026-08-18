@@ -128,6 +128,9 @@ class World:
     organisms: list[Organism]
     tick_count: int = 0
     events: list[str] = field(default_factory=list)
+    extinctions: list[str] = field(default_factory=list)
+    mutations: int = 0
+    predations: int = 0
 
     @classmethod
     def from_phrase(
@@ -185,6 +188,7 @@ class World:
         self._weather()
 
         rng = random.Random(stable_int(self.seed, "tick", self.tick_count))
+        before = self.population_by_species()
         order = list(self.organisms)
         rng.shuffle(order)
 
@@ -217,23 +221,40 @@ class World:
                     self.events.append(f"{sp.name} left a bright fossil")
                 continue
 
+            prey = self._maybe_prey(organism, sp, occupancy, rng)
+            if prey is not None:
+                organism.energy += max(2, prey.energy // 3)
+                prey.energy = 0
+                self.predations += 1
+                if len(self.events) < 4:
+                    self.events.append(f"{sp.name} absorbed a quieter neighbour")
+
             if organism.energy >= sp.split_threshold and rng.random() < 0.42:
                 child_energy = max(6, organism.energy // 2)
                 organism.energy -= child_energy
                 child_dx, child_dy = rng.choice(DIRECTIONS)
+                child_index = organism.species_index
+                child_genome = stable_int(
+                    self.seed,
+                    "child",
+                    self.tick_count,
+                    organism.genome,
+                    len(newborns),
+                )
+                if rng.random() < 0.12:
+                    child_genome ^= 0xA5A5
+                    self.mutations += 1
+                    if rng.random() < 0.25 and len(self.species) > 1:
+                        child_index = (child_index + 1) % len(self.species)
+                    if len(self.events) < 4:
+                        self.events.append(f"{sp.name} flickered into a new genome")
                 child = Organism(
-                    species_index=organism.species_index,
+                    species_index=child_index,
                     x=(organism.x + child_dx) % self.width,
                     y=(organism.y + child_dy) % self.height,
                     energy=child_energy,
                     age=0,
-                    genome=stable_int(
-                        self.seed,
-                        "child",
-                        self.tick_count,
-                        organism.genome,
-                        len(newborns),
-                    ),
+                    genome=child_genome,
                 )
                 newborns.append(child)
                 if len(self.events) < 4:
@@ -245,6 +266,7 @@ class World:
             )
 
         self.organisms = survivors + newborns
+        self._note_extinctions(before)
         self._trim_population()
         if not self.organisms:
             self._seed_rescue_population()
@@ -278,6 +300,9 @@ class World:
             "fossil_hash": self.fossil_hash(),
             "population": len(self.organisms),
             "nutrient_total": sum(sum(row) for row in self.nutrients),
+            "mutations": self.mutations,
+            "predations": self.predations,
+            "extinctions": list(self.extinctions),
             "events": list(self.events),
             "species": [
                 sp.as_dict(population=populations.get(index, 0))
@@ -326,6 +351,8 @@ class World:
             self._remembering_tide()
         if self.tick_count % 29 == 0:
             self._forgetting_fog()
+        if self.tick_count % 41 == 0:
+            self._drought()
 
     def _static_bloom(self) -> None:
         for y in range(self.height):
@@ -350,6 +377,66 @@ class World:
         for organism in self.organisms:
             organism.energy = max(1, organism.energy - 1)
         self.events.append("forgetting fog dimmed the habitat")
+
+    def _drought(self) -> None:
+        for y in range(self.height):
+            for x in range(self.width):
+                self.nutrients[y][x] = max(0, self.nutrients[y][x] - 2)
+        self.events.append("drought cracked the brine")
+
+    def _maybe_prey(
+        self,
+        organism: Organism,
+        sp: Species,
+        occupancy: dict[tuple[int, int], int],
+        rng: random.Random,
+    ) -> Organism | None:
+        if occupancy.get((organism.x, organism.y), 0) < 1:
+            return None
+        if sp.appetite + sp.stubbornness < 9:
+            return None
+        if rng.random() > 0.35:
+            return None
+        for other in self.organisms:
+            if other is organism or other.energy <= 0:
+                continue
+            if other.x != organism.x or other.y != organism.y:
+                continue
+            other_sp = self.species[other.species_index]
+            if other_sp.appetite >= sp.appetite:
+                continue
+            if other.energy >= organism.energy:
+                continue
+            return other
+        return None
+
+    def _note_extinctions(self, before: dict[int, int]) -> None:
+        after = self.population_by_species()
+        for index, count in before.items():
+            if count > 0 and after.get(index, 0) == 0:
+                name = self.species[index].name
+                if name not in self.extinctions:
+                    self.extinctions.append(name)
+                    if len(self.events) < 6:
+                        self.events.append(f"{name} went extinct")
+
+    def census(self) -> dict[str, object]:
+        populations = self.population_by_species()
+        return {
+            "tick": self.tick_count,
+            "population": len(self.organisms),
+            "mutations": self.mutations,
+            "predations": self.predations,
+            "extinctions": list(self.extinctions),
+            "species": [
+                {
+                    "name": sp.name,
+                    "glyph": sp.glyph,
+                    "population": populations.get(index, 0),
+                }
+                for index, sp in enumerate(self.species)
+            ],
+        }
 
     def _compost(self, x: int, y: int, *, amount: int) -> None:
         for dx, dy in [(0, 0), *DIRECTIONS[:4]]:

@@ -60,6 +60,20 @@ class MnemoquariumTests(unittest.TestCase):
         world.run(11)
         self.assertTrue(any("static bloom" in event for event in world.events))
 
+    def test_drought_fires_on_schedule(self):
+        world = World.from_phrase("dry season", width=20, height=12, population=10)
+        world.run(41)
+        self.assertTrue(any("drought" in event for event in world.events))
+
+    def test_census_tracks_population_and_counters(self):
+        world = World.from_phrase("census booth", width=20, height=12, population=12).run(20)
+        report = world.census()
+        self.assertEqual(report["tick"], 20)
+        self.assertEqual(report["population"], len(world.organisms))
+        self.assertIn("mutations", report)
+        self.assertIn("predations", report)
+        self.assertIsInstance(report["species"], list)
+
     def test_extinction_triggers_rescue(self):
         world = World.from_phrase("rescue", width=16, height=10, population=4)
         world.organisms.clear()
