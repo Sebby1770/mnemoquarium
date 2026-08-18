@@ -1,6 +1,8 @@
 # Mnemoquarium
 
-Deterministic phrase-fed artificial life. v0.3 adds mutations, predation, drought, and `--census`.
+**Live lab:** [https://sebby1770.github.io/mnemoquarium/](https://sebby1770.github.io/mnemoquarium/)
+
+Deterministic phrase-fed artificial life. Type a phrase in the browser tank or run the Python CLI.
 
 Mnemoquarium is a tiny artificial-life lab for the terminal.
 
