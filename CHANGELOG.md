@@ -2,6 +2,26 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [0.4.0] - 2026-08-18
+
+### Added
+- Seasons (spring / summer / autumn / winter) that change weather cadence
+- `--seed` to override the phrase-derived world seed
+- Census includes the current season
+
+## [0.3.0] - 2026-08-18
+
+### Added
+- Mutations on split (genome flicker; occasional species drift)
+- Predation when a hungrier organism shares a cell with a weaker neighbour
+- Drought weather on tick 41
+- Extinction tracking and a JSON `--census` report
+- Tests for drought and census
+
+### Changed
+- Snapshots include mutations, predations, and extinctions
+- Version bumped to 0.3.0
+
 ## [0.2.0] - 2026-07-04
 
 ### Added
