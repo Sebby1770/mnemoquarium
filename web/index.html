@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mnemoquarium</title>
+    <meta name="description" content="A phrase-fed memory aquarium. Type words, grow species, watch the brine remember.">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="top">
+      <div>
+        <p class="eyebrow">memory aquarium · v0.4</p>
+        <h1>Mnemoquarium</h1>
+      </div>
+      <nav>
+        <a href="https://github.com/Sebby1770/mnemoquarium">GitHub</a>
+        <button class="ghost" id="btn-share">Copy share link</button>
+      </nav>
+    </header>
+
+    <main>
+      <form id="seed-form" class="controls">
+        <label class="grow">Phrase
+          <input id="phrase" type="text" value="forgotten kiosk under neon rain" autocomplete="off">
+        </label>
+        <label>Seed
+          <input id="seed" type="number" placeholder="auto">
+        </label>
+        <label>Pop
+          <input id="population" type="number" min="4" max="120" value="28">
+        </label>
+        <button class="primary" type="submit">Grow</button>
+        <button type="button" id="btn-play">Pause</button>
+        <button type="button" id="btn-step">Step</button>
+        <label class="speed">Speed
+          <input id="speed" type="range" min="1" max="20" value="8">
+        </label>
+      </form>
+
+      <section class="stage">
+        <canvas id="tank" width="960" height="420" aria-label="Habitat"></canvas>
+        <aside>
+          <div class="kpis" id="kpis"></div>
+          <h2>Species</h2>
+          <div id="legend"></div>
+          <h2>Events</h2>
+          <ul id="events"></ul>
+        </aside>
+      </section>
+
+      <section class="compare card">
+        <h2>Compare two phrases</h2>
+        <div class="row">
+          <input id="phrase-a" type="text" value="neon rain">
+          <input id="phrase-b" type="text" value="static bloom">
+          <label>Steps <input id="compare-steps" type="number" min="8" max="200" value="48"></label>
+          <button type="button" id="btn-compare">Run compare</button>
+        </div>
+        <pre id="compare-out"></pre>
+      </section>
+    </main>
+
+    <script src="./engine.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

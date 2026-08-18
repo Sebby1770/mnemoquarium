@@ -2,6 +2,12 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [0.4.1] - 2026-08-18
+
+### Added
+- Browser lab on GitHub Pages: live habitat canvas, play/step, share links,
+  and phrase compare. Source lives in `web/`.
+
 ## [0.4.0] - 2026-08-18
 
 ### Added
