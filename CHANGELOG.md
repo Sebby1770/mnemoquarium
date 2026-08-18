@@ -2,6 +2,13 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [0.4.0] - 2026-08-18
+
+### Added
+- Seasons (spring / summer / autumn / winter) that change weather cadence
+- `--seed` to override the phrase-derived world seed
+- Census includes the current season
+
 ## [0.3.0] - 2026-08-18
 
 ### Added

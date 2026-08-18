@@ -73,6 +73,13 @@ class MnemoquariumTests(unittest.TestCase):
         self.assertIn("mutations", report)
         self.assertIn("predations", report)
         self.assertIsInstance(report["species"], list)
+        self.assertIn(report["season"], ("spring", "summer", "autumn", "winter"))
+
+    def test_explicit_seed_changes_the_world(self):
+        phrase = "same words different weather"
+        a = World.from_phrase(phrase, width=16, height=10, population=8, seed=1).run(8)
+        b = World.from_phrase(phrase, width=16, height=10, population=8, seed=2).run(8)
+        self.assertNotEqual(a.fossil_hash(), b.fossil_hash())
 
     def test_extinction_triggers_rescue(self):
         world = World.from_phrase("rescue", width=16, height=10, population=4)

@@ -141,11 +141,12 @@ class World:
         height: int = 24,
         population: int = 32,
         max_species: int = 8,
+        seed: int | None = None,
     ) -> "World":
         if width < 12 or height < 8:
             raise ValueError("mnemoquarium needs at least a 12x8 habitat")
         phrase = phrase.strip() or DEFAULT_PHRASE
-        seed = stable_int("mnemoquarium", phrase)
+        seed = int(seed) if seed is not None else stable_int("mnemoquarium", phrase)
         rng = random.Random(seed)
         species = make_species(phrase, max_species=max_species)
         nutrients = [
@@ -353,6 +354,11 @@ class World:
             self._forgetting_fog()
         if self.tick_count % 41 == 0:
             self._drought()
+        season = self.season()
+        if season == "spring" and self.tick_count % 7 == 0:
+            self._static_bloom()
+        if season == "winter" and self.tick_count % 19 == 0:
+            self._drought()
 
     def _static_bloom(self) -> None:
         for y in range(self.height):
@@ -420,10 +426,14 @@ class World:
                     if len(self.events) < 6:
                         self.events.append(f"{name} went extinct")
 
+    def season(self) -> str:
+        return ("spring", "summer", "autumn", "winter")[(max(0, self.tick_count - 1) // 13) % 4]
+
     def census(self) -> dict[str, object]:
         populations = self.population_by_species()
         return {
             "tick": self.tick_count,
+            "season": self.season(),
             "population": len(self.organisms),
             "mutations": self.mutations,
             "predations": self.predations,

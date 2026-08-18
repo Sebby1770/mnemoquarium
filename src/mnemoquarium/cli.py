@@ -95,6 +95,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print a JSON census (mutations, predations, extinctions) after the run.",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Override the phrase-derived world seed.",
+    )
     return parser
 
 
@@ -183,6 +189,7 @@ def build_world(args: argparse.Namespace, phrase: str) -> World:
         height=args.height,
         population=args.population,
         max_species=args.max_species,
+        seed=args.seed,
     )
 
 
