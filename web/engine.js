@@ -166,6 +166,8 @@ class World {
         population: pops[i],
         appetite: sp.appetite,
         curiosity: sp.curiosity,
+        stubbornness: sp.stubbornness,
+        seed: sp.seed,
         source_word: sp.source_word,
       })),
     };
