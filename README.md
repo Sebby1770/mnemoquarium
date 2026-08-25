@@ -2,7 +2,7 @@
 
 **Live lab:** [https://sebby1770.github.io/mnemoquarium/](https://sebby1770.github.io/mnemoquarium/)
 
-Deterministic phrase-fed artificial life. Type a phrase and look **through the glass** of a living side-view aquarium: day and night, reef or kelp or moonlit water, schooling fish, sand, coral, and brine. Or run the Python CLI.
+Deterministic phrase-fed artificial life. Type a phrase and look **through the glass** of a slow side-view aquarium: fish with scales and gills glide over sand and coral. Day and night, reef / kelp / moonlit themes, schooling, and brine. Or run the Python CLI.
 
 Mnemoquarium is a tiny artificial-life lab for the terminal and the browser.
 

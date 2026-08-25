@@ -106,7 +106,9 @@ const audio = {
 };
 
 function delay() {
-  return 420 - Number(speedInput.value) * 18;
+  // Slow cinema tank: ~2s per tick at the default of 3.
+  const s = Number(speedInput.value);
+  return Math.max(480, 2300 - s * 90);
 }
 
 function applyTheme(id) {

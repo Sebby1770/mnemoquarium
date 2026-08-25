@@ -2,6 +2,16 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [0.7.0] - 2026-08-25
+
+### Changed
+- **Slow cinema tank** — default tempo is much slower (~2s per tick). Fish
+  glide between cells instead of darting; tails, fins, bubbles, and caustics
+  move at aquarium pace. Tap-the-glass startle is gentler.
+- **More realistic fish** — larger bodies, scale rows, gill slit, lateral line,
+  belly/dorsal highlights, and an iris that matches species hue.
+- Version bumped to 0.7.0.
+
 ## [0.6.0] - 2026-08-25
 
 ### Added

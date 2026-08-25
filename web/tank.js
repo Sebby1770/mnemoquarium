@@ -358,9 +358,9 @@
         const dy = vis.py - cssY;
         const d = Math.hypot(dx, dy) || 1;
         if (d < 180) {
-          vis.dart = 14 * (1 - d / 180);
+          vis.dart = 7 * (1 - d / 180);
           vis.vx += (dx / d) * vis.dart;
-          vis.vy += (dy / d) * vis.dart * 0.45;
+          vis.vy += (dy / d) * vis.dart * 0.4;
         }
       });
     }
@@ -409,18 +409,25 @@
           dx = 0;
         }
         const dy = vis.targetY - vis.py;
-        vis.px += dx * 0.045 * dt + vis.vx * 0.04 * dt;
-        vis.py += dy * 0.05 * dt + vis.vy * 0.04 * dt;
-        vis.vx *= Math.pow(0.86, dt);
-        vis.vy *= Math.pow(0.86, dt);
-        vis.dart *= Math.pow(0.9, dt);
-        if (Math.abs(dx + vis.vx) > 0.4) vis.facing = dx + vis.vx >= 0 ? 1 : -1;
-        vis.angle = clamp((dy * 0.02 + vis.vx * 0.01) * vis.facing, -0.35, 0.35);
+        const glide = 0.016 * dt;
+        vis.px += dx * glide + vis.vx * 0.018 * dt;
+        vis.py += dy * glide * 1.1 + vis.vy * 0.018 * dt;
+        vis.vx *= Math.pow(0.92, dt);
+        vis.vy *= Math.pow(0.92, dt);
+        vis.dart *= Math.pow(0.94, dt);
+        const heading = dx + vis.vx;
+        if (heading > 5) vis.facing = 1;
+        else if (heading < -5) vis.facing = -1;
+        vis.angle = clamp((dy * 0.012 + vis.vx * 0.008) * vis.facing, -0.22, 0.22);
+        if (Math.hypot(dx, dy) < 8) {
+          vis.px += Math.sin(now * 0.0007 + vis.phase) * 0.18 * this._m();
+          vis.py += Math.cos(now * 0.00055 + vis.phase) * 0.12 * this._m();
+        }
         vis.py = clamp(vis.py, water.y + 14, this.sandY(vis.px) - 10);
         vis.px = clamp(vis.px, water.x + 16, water.x + water.w - 16);
         if (this.flakes.length && vis.morph.kind !== "eel") {
           const flake = this.flakes[0];
-          vis.px += (flake.x - vis.px) * 0.004 * vis.morph.speed * dt;
+          vis.px += (flake.x - vis.px) * 0.0016 * vis.morph.speed * dt;
         }
       });
       this._stepParticles(dt, now, water);
@@ -459,25 +466,25 @@
             n += 1;
           }
         }
-        vis.vx += sx * 0.38 * dt * mot;
-        vis.vy += sy * 0.38 * dt * mot;
+        vis.vx += sx * 0.16 * dt * mot;
+        vis.vy += sy * 0.16 * dt * mot;
         if (n > 0) {
-          vis.vx += ((cx / n - vis.px) * 0.012 + (avx / n - vis.vx) * 0.09) * dt * mot;
-          vis.vy += ((cy / n - vis.py) * 0.012 + (avy / n - vis.vy) * 0.09) * dt * mot;
+          vis.vx += ((cx / n - vis.px) * 0.006 + (avx / n - vis.vx) * 0.05) * dt * mot;
+          vis.vy += ((cy / n - vis.py) * 0.006 + (avy / n - vis.vy) * 0.05) * dt * mot;
         }
-        vis.vx = clamp(vis.vx, -18, 18);
-        vis.vy = clamp(vis.vy, -10, 10);
+        vis.vx = clamp(vis.vx, -7, 7);
+        vis.vy = clamp(vis.vy, -4, 4);
       }
     }
 
     _stepParticles(dt, now, water) {
-      if (this.decor && Math.random() < 0.35 * dt) {
+      if (this.decor && Math.random() < 0.16 * dt) {
         const ax = water.x + this.decor.aerator * water.w;
         this.bubbles.push({
           x: ax + (Math.random() - 0.5) * 10,
           y: this.sandY(ax) - 12,
           r: 1 + Math.random() * 2.4,
-          vy: 0.45 + Math.random() * 0.7,
+          vy: 0.22 + Math.random() * 0.32,
           wobble: Math.random() * 6,
           born: now,
         });
@@ -806,7 +813,7 @@
       const mot = this._m();
       for (let i = 0; i < 11; i += 1) {
         const a = -Math.PI + i * 0.28;
-        const wob = Math.sin(t * 1.4 + phase + i) * 8 * s * mot;
+        const wob = Math.sin(t * 0.55 + phase + i) * 8 * s * mot;
         ctx.beginPath();
         ctx.moveTo(x, y - 6);
         ctx.quadraticCurveTo(x + Math.cos(a) * 10 * s + wob, y - 28 * s, x + Math.cos(a) * 16 * s, y - 36 * s);
@@ -937,16 +944,17 @@
       const m = vis.morph;
       const sp = vis.sp;
       const energy = org.energy;
-      let L = 16 + energy * 0.42 + (sp.lifespan % 8);
-      let H = L * 0.38;
-      if (m.kind === "angel") { L *= 0.78; H = L * 1.15; }
-      if (m.kind === "eel") { L *= 1.7; H = L * 0.16; }
-      if (m.kind === "betta") { H = L * 0.42; }
-      if (m.kind === "guppy") { L *= 0.82; H = L * 0.45; }
-      if (m.kind === "tetra") { L *= 0.9; H = L * 0.32; }
+      let L = 22 + energy * 0.58 + (sp.lifespan % 8);
+      let H = L * 0.36;
+      if (m.kind === "angel") { L *= 0.82; H = L * 1.18; }
+      if (m.kind === "eel") { L *= 1.85; H = L * 0.15; }
+      if (m.kind === "betta") { H = L * 0.44; }
+      if (m.kind === "guppy") { L *= 0.88; H = L * 0.46; }
+      if (m.kind === "tetra") { L *= 0.95; H = L * 0.33; }
+      if (m.kind === "catfish") { L *= 1.05; H = L * 0.28; }
       const mot = this._m();
-      const tail = Math.sin(now * 0.01 * m.speed + vis.phase) * (0.18 + 0.27 * mot);
-      const bob = Math.sin(now * 0.003 * m.speed + vis.phase) * 2.2 * mot;
+      const tail = Math.sin(now * 0.0036 * m.speed + vis.phase) * (0.14 + 0.22 * mot);
+      const bob = Math.sin(now * 0.0011 * m.speed + vis.phase) * 1.6 * mot;
       ctx.save();
       ctx.translate(vis.px, vis.py + bob);
       ctx.scale(vis.facing, 1);
@@ -972,11 +980,28 @@
       ctx.save();
       ctx.clip();
       this._fishPattern(ctx, m, L, H);
-      ctx.fillStyle = hsl(m.belly, 40, 78, 0.22);
+      this._fishScales(ctx, m, L, H, light);
+      ctx.fillStyle = hsl(m.belly, 35, 82, 0.28);
       ctx.beginPath();
-      ctx.ellipse(L * 0.05, -H * 0.18, L * 0.28, H * 0.16, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(L * 0.08, H * 0.12, L * 0.32, H * 0.22, 0.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = hsl(m.belly, 40, 88, 0.22);
+      ctx.beginPath();
+      ctx.ellipse(L * 0.05, -H * 0.2, L * 0.3, H * 0.12, -0.25, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+
+      ctx.strokeStyle = hsl(m.hue, 30, 22, 0.55);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(L * 0.16, 0, H * 0.38, -1.15, 1.15);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(L * 0.18, 0);
+      ctx.quadraticCurveTo(-L * 0.02, H * 0.06, -L * 0.32, 0);
+      ctx.strokeStyle = hsl(m.hue, 20, 30, 0.35);
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
 
       this._fins(ctx, m, L, H, tail, now);
       this._eye(ctx, m, L, H);
@@ -1029,6 +1054,22 @@
       ctx.closePath();
     }
 
+    _fishScales(ctx, m, L, H, light) {
+      ctx.strokeStyle = hsl(m.hue, 25, 18, 0.22 * light);
+      ctx.lineWidth = 0.55;
+      const cols = 7;
+      const rows = 5;
+      for (let r = 0; r < rows; r += 1) {
+        for (let c = 0; c < cols; c += 1) {
+          const x = L * 0.22 - c * (L * 0.09) - (r % 2) * 2;
+          const y = -H * 0.28 + r * (H * 0.14);
+          ctx.beginPath();
+          ctx.arc(x, y, Math.max(1.4, H * 0.11), 0.35, Math.PI - 0.35);
+          ctx.stroke();
+        }
+      }
+    }
+
     _fishPattern(ctx, m, L, H) {
       if (m.pattern === 0) {
         for (let i = 0; i < m.stripeCount; i += 1) {
@@ -1049,7 +1090,7 @@
     }
 
     _fins(ctx, m, L, H, tail, now) {
-      const flap = Math.sin(now * 0.012 + tail) * 0.25 * this._m();
+      const flap = Math.sin(now * 0.0045 + tail) * 0.2 * this._m();
       ctx.fillStyle = hsl(m.hue, 60, 46, 0.7);
       ctx.beginPath();
       ctx.moveTo(L * 0.05, -H * 0.2);
@@ -1100,16 +1141,21 @@
     _eye(ctx, m, L, H) {
       const ex = L * 0.28;
       const ey = -H * 0.08;
+      const r = Math.max(1.8, H * 0.18);
       ctx.beginPath();
-      ctx.arc(ex, ey, Math.max(1.6, H * 0.16), 0, Math.PI * 2);
-      ctx.fillStyle = "#f4f1e6";
+      ctx.arc(ex, ey, r, 0, Math.PI * 2);
+      ctx.fillStyle = "#f7f3e8";
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(ex + 0.6, ey, Math.max(0.8, H * 0.08), 0, Math.PI * 2);
-      ctx.fillStyle = "#121418";
+      ctx.arc(ex + r * 0.15, ey, r * 0.62, 0, Math.PI * 2);
+      ctx.fillStyle = hsl(m.hue, 45, 28);
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(ex + 1.1, ey - 0.6, 0.5, 0, Math.PI * 2);
+      ctx.arc(ex + r * 0.28, ey, r * 0.38, 0, Math.PI * 2);
+      ctx.fillStyle = "#0c0d10";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(ex + r * 0.45, ey - r * 0.28, r * 0.16, 0, Math.PI * 2);
       ctx.fillStyle = "#fff";
       ctx.fill();
     }
@@ -1198,7 +1244,7 @@
         ctx.moveTo(water.x, y);
         for (let x = 0; x <= 20; x += 1) {
           const px = water.x + (x / 20) * water.w;
-          const py = y + Math.sin(px * 0.03 + t * 1.4 * mot + i) * 6 * mot;
+          const py = y + Math.sin(px * 0.03 + t * 0.55 * mot + i) * 6 * mot;
           ctx.lineTo(px, py);
         }
       }
@@ -1215,7 +1261,7 @@
       ctx.moveTo(water.x, water.y);
       for (let i = 0; i <= 32; i += 1) {
         const px = water.x + (i / 32) * water.w;
-        const py = water.y + Math.sin(px * 0.045 + t * 1.6) * 2.2 * mot + Math.sin(px * 0.12 + t * 2.1) * 1.1 * mot;
+        const py = water.y + Math.sin(px * 0.045 + t * 0.7) * 2.2 * mot + Math.sin(px * 0.12 + t * 0.9) * 1.1 * mot;
         ctx.lineTo(px, py);
       }
       ctx.lineTo(water.x + water.w, water.y - 10);
@@ -1228,7 +1274,7 @@
       ctx.beginPath();
       for (let i = 0; i <= 32; i += 1) {
         const px = water.x + (i / 32) * water.w;
-        const py = water.y + Math.sin(px * 0.045 + t * 1.6) * 2.2 * mot;
+        const py = water.y + Math.sin(px * 0.045 + t * 0.7) * 2.2 * mot;
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
