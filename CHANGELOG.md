@@ -2,6 +2,25 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [0.6.0] - 2026-08-25
+
+### Added
+- Living tank in the browser lab: day/night cycle from season, tick, and
+  wall-clock, with a smooth blend, moon/stars in the room, and a HUD clock.
+- Themes — reef, kelp forest, moonlit — with a hood picker and `theme=` in
+  the share URL hash.
+- Loose schooling for tetras and guppies (same-species alignment/cohesion).
+- Save photo downloads a PNG of the canvas; keyboard S.
+- Optional Web Audio (off by default): bubble pops and a low water bed,
+  started only from the Sound toggle.
+- Keyboard: F feed, T tap, L lights, Space play/pause, S snapshot.
+- `prefers-reduced-motion` damps bob, caustics, and plant sway.
+- Hang-on filter and heater gadgets on the glass.
+- HUD shows phase, clock, and theme; SVG specimens get a moonlit night tint.
+
+### Changed
+- Version bumped to 0.6.0.
+
 ## [0.5.0] - 2026-08-25
 
 ### Added

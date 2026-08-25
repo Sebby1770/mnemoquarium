@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Mnemoquarium — side-view memory tank</title>
-    <meta name="description" content="Look through the glass: phrase-fed fish, sand, coral, and brine. A deterministic memory aquarium.">
+    <title>Mnemoquarium — living memory tank</title>
+    <meta name="description" content="A living side-view aquarium: day and night, reef and kelp themes, schooling fish, and phrase-fed brine.">
     <link rel="stylesheet" href="./styles.css">
   </head>
-  <body class="room">
+  <body class="room" data-phase="day" data-theme="reef">
     <header class="mast">
       <div>
-        <p class="eyebrow">side-view tank · v0.5</p>
+        <p class="eyebrow">living tank · v0.6</p>
         <h1>Mnemoquarium</h1>
-        <p class="lede">You are looking through the glass. Each word in the phrase becomes a species of fish. Sand, coral, and brine remember the seed.</p>
+        <p class="lede">You are looking through the glass. Each word in the phrase becomes a species of fish. The room above the tank keeps time; sand, coral, and brine remember the seed.</p>
       </div>
       <nav>
         <a href="https://github.com/Sebby1770/mnemoquarium">GitHub</a>
@@ -32,6 +32,13 @@
           <label>Pop
             <input id="population" type="number" min="4" max="120" value="28">
           </label>
+          <label>Theme
+            <select id="theme">
+              <option value="reef">Reef</option>
+              <option value="kelp">Kelp forest</option>
+              <option value="moonlit">Moonlit</option>
+            </select>
+          </label>
           <button class="primary" type="submit">Grow</button>
           <button type="button" id="btn-play">Pause</button>
           <button type="button" id="btn-step">Step</button>
@@ -42,6 +49,7 @@
 
         <div class="bezel">
           <canvas id="tank" width="1100" height="620" aria-label="Side-view aquarium"></canvas>
+          <p class="hud-clock" id="hud-clock">day · 12:00 · reef</p>
           <aside class="inspect" id="inspect" hidden></aside>
         </div>
 
@@ -49,8 +57,10 @@
           <button type="button" id="btn-feed">Feed flakes</button>
           <button type="button" id="btn-tap">Tap glass</button>
           <button type="button" id="btn-lights">Lights</button>
+          <button type="button" id="btn-photo">Save photo</button>
+          <button type="button" id="btn-sound" aria-pressed="false">Sound</button>
           <button type="button" id="btn-full">Fullscreen tank</button>
-          <p class="hint">Click a fish to inspect. Click empty water to tap the glass.</p>
+          <p class="hint">Click a fish to inspect. Keys: F feed · T tap · L lights · Space pause · S photo. Sound starts only when you turn it on.</p>
         </div>
       </div>
 

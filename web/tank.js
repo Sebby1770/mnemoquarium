@@ -11,12 +11,58 @@
     winter: { wash: "rgba(40, 70, 140, 0.14)", sand: [30, 16, 46], light: 0.80, plant: -10 },
   };
 
+  const THEMES = {
+    reef: {
+      id: "reef",
+      label: "Reef",
+      waterHue: 192,
+      waterSat: 48,
+      nightHue: 224,
+      kelpCount: 9,
+      kelpBias: 0.12,
+      plant: 0,
+      bio: 0,
+      wash: null,
+      sand: null,
+    },
+    kelp: {
+      id: "kelp",
+      label: "Kelp forest",
+      waterHue: 158,
+      waterSat: 40,
+      nightHue: 176,
+      kelpCount: 18,
+      kelpBias: 0.78,
+      plant: 16,
+      bio: 0.12,
+      wash: "rgba(28, 110, 62, 0.16)",
+      sand: [42, 28, 40],
+    },
+    moonlit: {
+      id: "moonlit",
+      label: "Moonlit",
+      waterHue: 222,
+      waterSat: 54,
+      nightHue: 234,
+      kelpCount: 7,
+      kelpBias: 0.1,
+      plant: -6,
+      bio: 1,
+      wash: "rgba(18, 32, 96, 0.22)",
+      sand: [220, 16, 26],
+    },
+  };
+
   function hsl(h, s, l, a) {
     return a == null ? `hsl(${h} ${s}% ${l}%)` : `hsla(${h} ${s}% ${l}% / ${a})`;
   }
 
   function clamp(v, lo, hi) {
     return Math.max(lo, Math.min(hi, v));
+  }
+
+  function lerp(a, b, t) {
+    return a + (b - a) * t;
   }
 
   function fishKind(sp) {
@@ -33,7 +79,7 @@
       kind,
       hue: sp.hue,
       belly: (sp.hue + 28 + (g % 18)) % 360,
-      pattern: (g >>> 5) % 3, // 0 stripes, 1 spots, 2 wash
+      pattern: (g >>> 5) % 3,
       stripeCount: 3 + ((g >>> 9) % 5),
       spotCount: 4 + ((g >>> 11) % 7),
       tailFan: 0.55 + ((g >>> 13) % 40) / 100,
@@ -64,14 +110,63 @@
       this.shrimp = [];
       this.snail = { x: 0.12, dir: 1, yOff: 0 };
       this.lights = true;
+      this.theme = "reef";
       this.picked = null;
       this.shock = 0;
       this.decor = null;
       this.cssW = 1100;
       this.cssH = 620;
       this.onPick = null;
+      this.onBubble = null;
+      this.reducedMotion = false;
+      this.phase = { cycle: 0.5, night: 0, label: "day", clock: "12:00" };
       this._last = performance.now();
+      this._bindMotion();
       this.resize();
+    }
+
+    _bindMotion() {
+      if (typeof window.matchMedia !== "function") return;
+      this._mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const apply = () => {
+        this.reducedMotion = !!this._mq.matches;
+      };
+      apply();
+      if (this._mq.addEventListener) this._mq.addEventListener("change", apply);
+      else if (this._mq.addListener) this._mq.addListener(apply);
+    }
+
+    _m() {
+      return this.reducedMotion ? 0.12 : 1;
+    }
+
+    themeSpec() {
+      return THEMES[this.theme] || THEMES.reef;
+    }
+
+    setTheme(id) {
+      this.theme = THEMES[id] ? id : "reef";
+      if (this.world) this.decor = this._buildDecor(this.world);
+    }
+
+    dayNight(now) {
+      const season = this.world ? this.world.season() : "summer";
+      const dayLen = { spring: 0.56, summer: 0.68, autumn: 0.5, winter: 0.36 }[season] || 0.5;
+      const tickCycle = ((this.world ? this.world.tick_count : 0) % 48) / 48;
+      const wallCycle = ((now / 1000) / 96) % 1;
+      const cycle = (tickCycle * 0.62 + wallCycle * 0.38) % 1;
+      const elev = -Math.cos(cycle * Math.PI * 2);
+      const threshold = (dayLen - 0.5) * 1.6;
+      let night = clamp(0.5 - elev * 0.5 - threshold * 0.35, 0, 1);
+      let label = "day";
+      if (night >= 0.72) label = "night";
+      else if (night >= 0.42) label = cycle < 0.5 ? "dawn" : "dusk";
+      if (this.theme === "moonlit") night = clamp(night * 0.55 + 0.42, 0, 1);
+      const hours = (cycle * 24 + 24) % 24;
+      const hh = Math.floor(hours);
+      const mm = Math.floor((hours - hh) * 60);
+      const clock = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+      return { cycle, night, label, clock, season };
     }
 
     attach(world) {
@@ -101,7 +196,7 @@
     layout() {
       const w = this.cssW;
       const h = this.cssH;
-      const pad = { l: 18, r: 18, t: 28, b: 16 };
+      const pad = { l: 20, r: 20, t: 36, b: 18 };
       return {
         x: pad.l,
         y: pad.t,
@@ -135,7 +230,17 @@
 
     _tint() {
       const season = this.world ? this.world.season() : "summer";
-      return SEASON_TINT[season] || SEASON_TINT.summer;
+      const base = SEASON_TINT[season] || SEASON_TINT.summer;
+      const theme = this.themeSpec();
+      return {
+        wash: theme.wash || base.wash,
+        sand: theme.sand || base.sand,
+        light: base.light,
+        plant: base.plant + theme.plant,
+        waterHue: theme.waterHue,
+        waterSat: theme.waterSat,
+        nightHue: theme.nightHue,
+      };
     }
 
     toTank(org) {
@@ -154,12 +259,18 @@
 
     _buildDecor(world) {
       const rng = new Rng(world.seed ^ 0x5f3759df);
+      const theme = this.themeSpec();
       const items = [];
-      const count = 7 + (world.seed % 5);
+      const extra = theme.kelpBias > 0.5 ? 6 : 0;
+      const count = 7 + (world.seed % 5) + extra;
+      const reefKinds = ["branch", "brain", "anemone", "kelp", "rock", "wood"];
+      const kelpKinds = ["kelp", "kelp", "kelp", "rock", "wood", "kelp", "branch"];
+      const kinds = theme.kelpBias > 0.5 ? kelpKinds : reefKinds;
       for (let i = 0; i < count; i += 1) {
-        const kinds = ["branch", "brain", "anemone", "kelp", "rock", "wood"];
+        let kind = kinds[rng.randrange(kinds.length)];
+        if (theme.kelpBias > 0.4 && rng.random() < theme.kelpBias) kind = "kelp";
         items.push({
-          kind: kinds[rng.randrange(kinds.length)],
+          kind,
           x: 0.06 + rng.random() * 0.88,
           scale: 0.7 + rng.random() * 0.9,
           hue: (90 + rng.randrange(80) + i * 17) % 360,
@@ -206,6 +317,7 @@
             phase: (org.genome % 1000) / 159.1,
             morph: morph(sp, org.genome),
             vx: 0,
+            vy: 0,
             dart: 0,
           };
           this.fish.set(org.genome, vis);
@@ -248,6 +360,7 @@
         if (d < 180) {
           vis.dart = 14 * (1 - d / 180);
           vis.vx += (dx / d) * vis.dart;
+          vis.vy += (dy / d) * vis.dart * 0.45;
         }
       });
     }
@@ -275,12 +388,18 @@
       };
     }
 
+    snapshotDataUrl() {
+      return this.canvas.toDataURL("image/png");
+    }
+
     stepVisual(now) {
       const dt = Math.min(48, now - this._last) / 16.67;
       this._last = now;
+      this.phase = this.dayNight(now);
       this._syncFish(false);
       this.shock *= Math.pow(0.92, dt);
       const water = this.waterRect();
+      this._school(dt);
       this.fish.forEach((vis) => {
         let dx = vis.targetX - vis.px;
         const wrap = this.cssW * 0.45;
@@ -291,8 +410,9 @@
         }
         const dy = vis.targetY - vis.py;
         vis.px += dx * 0.045 * dt + vis.vx * 0.04 * dt;
-        vis.py += dy * 0.05 * dt;
+        vis.py += dy * 0.05 * dt + vis.vy * 0.04 * dt;
         vis.vx *= Math.pow(0.86, dt);
+        vis.vy *= Math.pow(0.86, dt);
         vis.dart *= Math.pow(0.9, dt);
         if (Math.abs(dx + vis.vx) > 0.4) vis.facing = dx + vis.vx >= 0 ? 1 : -1;
         vis.angle = clamp((dy * 0.02 + vis.vx * 0.01) * vis.facing, -0.35, 0.35);
@@ -306,6 +426,50 @@
       this._stepParticles(dt, now, water);
     }
 
+    _school(dt) {
+      const members = [];
+      this.fish.forEach((vis) => {
+        const kind = vis.morph.kind;
+        if (kind === "tetra" || kind === "guppy") members.push(vis);
+      });
+      const mot = this._m();
+      for (const vis of members) {
+        let cx = 0;
+        let cy = 0;
+        let avx = 0;
+        let avy = 0;
+        let n = 0;
+        let sx = 0;
+        let sy = 0;
+        for (const other of members) {
+          if (other === vis) continue;
+          if (!vis.org || !other.org) continue;
+          if (other.org.species_index !== vis.org.species_index) continue;
+          const dx = other.px - vis.px;
+          const dy = other.py - vis.py;
+          const d = Math.hypot(dx, dy);
+          if (d < 8 && d > 0.1) {
+            sx -= dx / d;
+            sy -= dy / d;
+          } else if (d < 92) {
+            cx += other.px;
+            cy += other.py;
+            avx += other.vx;
+            avy += other.vy;
+            n += 1;
+          }
+        }
+        vis.vx += sx * 0.38 * dt * mot;
+        vis.vy += sy * 0.38 * dt * mot;
+        if (n > 0) {
+          vis.vx += ((cx / n - vis.px) * 0.012 + (avx / n - vis.vx) * 0.09) * dt * mot;
+          vis.vy += ((cy / n - vis.py) * 0.012 + (avy / n - vis.vy) * 0.09) * dt * mot;
+        }
+        vis.vx = clamp(vis.vx, -18, 18);
+        vis.vy = clamp(vis.vy, -10, 10);
+      }
+    }
+
     _stepParticles(dt, now, water) {
       if (this.decor && Math.random() < 0.35 * dt) {
         const ax = water.x + this.decor.aerator * water.w;
@@ -317,16 +481,28 @@
           wobble: Math.random() * 6,
           born: now,
         });
+        if (this.onBubble) this.onBubble();
+      }
+      if (Math.random() < 0.08 * dt) {
+        const fx = water.x + 18;
+        this.bubbles.push({
+          x: fx + (Math.random() - 0.5) * 6,
+          y: water.y + 22,
+          r: 0.8 + Math.random() * 1.6,
+          vy: 0.3 + Math.random() * 0.4,
+          wobble: Math.random() * 6,
+          born: now,
+        });
       }
       this.bubbles = this.bubbles.filter((b) => {
         b.y -= b.vy * dt;
-        b.x += Math.sin((now + b.wobble) * 0.003) * 0.35;
+        b.x += Math.sin((now + b.wobble) * 0.003) * 0.35 * this._m();
         return b.y > water.y + 4;
       }).slice(-90);
       this.flakes = this.flakes.filter((f) => {
         f.y += f.vy * dt;
-        f.x += Math.sin(now * 0.002 + f.rot) * 0.2;
-        f.rot += 0.03 * dt;
+        f.x += Math.sin(now * 0.002 + f.rot) * 0.2 * this._m();
+        f.rot += 0.03 * dt * this._m();
         f.life -= 0.002 * dt;
         return f.y < this.sandY(f.x) - 6 && f.life > 0;
       });
@@ -336,10 +512,10 @@
         return r.life > 0;
       });
       this.shrimp.forEach((s) => {
-        s.x += s.dir * 0.00035 * dt;
+        s.x += s.dir * 0.00035 * dt * (this.reducedMotion ? 0.35 : 1);
         if (s.x < 0.04 || s.x > 0.96) s.dir *= -1;
       });
-      this.snail.x += this.snail.dir * 0.00008 * dt;
+      this.snail.x += this.snail.dir * 0.00008 * dt * (this.reducedMotion ? 0.35 : 1);
       if (this.snail.x < 0.04 || this.snail.x > 0.96) this.snail.dir *= -1;
     }
 
@@ -352,7 +528,10 @@
       const water = this.waterRect();
       const tint = this._tint();
       const t = now * 0.001;
-      const light = (this.lights ? 1 : 0.22) * tint.light;
+      this.phase = this.dayNight(now);
+      const lamp = this.lights ? 1 : 0;
+      const sky = 1 - this.phase.night * 0.92;
+      const light = clamp((0.18 + sky * 0.52 + lamp * 0.48) * tint.light, 0.12, 1.35);
 
       ctx.clearRect(0, 0, w, h);
       this._drawCabinet(ctx, w, h, box);
@@ -366,21 +545,32 @@
       this._drawFarPlants(ctx, water, t, tint);
       this._drawSand(ctx, water, tint, light);
       this._drawDecor(ctx, water, t, tint, false);
+      this._drawHeater(ctx, box, water, light);
       this._drawPlankton(ctx, water, light);
       this._drawFlakes(ctx);
       const fish = [...this.fish.values()].sort((a, b) => a.py - b.py);
       fish.forEach((vis) => this._drawFish(ctx, vis, now, light));
       this._drawShrimp(ctx, water, now);
       this._drawDecor(ctx, water, t, tint, true);
+      this._drawFilter(ctx, box, water, light);
       this._drawBubbles(ctx);
       this._drawSnail(ctx, box, water, now);
       this._drawCaustics(ctx, water, t, light);
       this._drawSurface(ctx, water, t, light);
       this._drawRipples(ctx);
       if (!this.lights) {
-        ctx.fillStyle = "rgba(2, 6, 12, 0.55)";
+        const a = this.theme === "moonlit"
+          ? 0.26 + this.phase.night * 0.16
+          : 0.2 + this.phase.night * 0.32;
+        ctx.fillStyle = this.theme === "moonlit"
+          ? `rgba(4, 12, 36, ${a})`
+          : `rgba(2, 6, 14, ${a})`;
+        ctx.fillRect(box.x, box.y, box.w, box.h);
+      } else if (this.phase.night > 0.35) {
+        ctx.fillStyle = `rgba(6, 12, 32, ${0.08 * this.phase.night})`;
         ctx.fillRect(box.x, box.y, box.w, box.h);
       }
+      this._drawBioSpark(ctx, water, now);
       this._drawGlass(ctx, box, water, light);
       ctx.restore();
       this._drawHood(ctx, box, light);
@@ -396,6 +586,7 @@
       wood.addColorStop(1, "#1a100a");
       ctx.fillStyle = wood;
       ctx.fillRect(4, 4, w - 8, h - 8);
+      this._drawSky(ctx, w, box);
       ctx.strokeStyle = "rgba(255, 210, 150, 0.12)";
       ctx.lineWidth = 2;
       ctx.strokeRect(6, 6, w - 12, h - 12);
@@ -403,11 +594,64 @@
       ctx.fillRect(box.x - 4, box.y - 4, box.w + 8, box.h + 8);
     }
 
+    _drawSky(ctx, w, box) {
+      const night = this.phase.night;
+      const moonlit = this.theme === "moonlit";
+      const skyNight = clamp(night + (moonlit ? 0.32 : 0), 0, 1);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(8, 8, w - 16, Math.max(8, box.y - 6));
+      ctx.clip();
+      const g = ctx.createLinearGradient(0, 0, 0, box.y);
+      if (skyNight > 0.45) {
+        g.addColorStop(0, hsl(230, 42, lerp(26, 5, skyNight)));
+        g.addColorStop(1, hsl(222, 36, lerp(16, 3, skyNight)));
+      } else {
+        g.addColorStop(0, hsl(198, 36, lerp(58, 22, skyNight)));
+        g.addColorStop(1, hsl(32, 28, lerp(28, 10, skyNight)));
+      }
+      ctx.fillStyle = g;
+      ctx.fillRect(8, 8, w - 16, box.y);
+      if (skyNight < 0.55) {
+        ctx.beginPath();
+        ctx.arc(w * 0.16, Math.max(14, box.y * 0.42), 9, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255, 214, 140, ${(1 - skyNight) * 0.7})`;
+        ctx.fill();
+      }
+      if (skyNight > 0.28) {
+        const rng = new Rng((this.world ? this.world.seed : 1) ^ 0x51a);
+        ctx.globalAlpha = clamp((skyNight - 0.22) * 1.35, 0, 1);
+        for (let i = 0; i < 42; i += 1) {
+          const sx = 12 + rng.random() * (w - 24);
+          const sy = 10 + rng.random() * Math.max(6, box.y - 12);
+          ctx.fillStyle = i % 9 === 0 ? "#fde68a" : "#e8f0ff";
+          const r = i % 7 === 0 ? 1.4 : 0.9;
+          ctx.fillRect(sx, sy, r, r);
+        }
+        const mx = w * 0.82;
+        const my = Math.max(16, box.y * 0.4);
+        ctx.globalAlpha = skyNight * 0.4;
+        ctx.beginPath();
+        ctx.arc(mx, my, 13, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(210, 224, 255, 0.55)";
+        ctx.fill();
+        ctx.globalAlpha = skyNight * 0.95;
+        ctx.beginPath();
+        ctx.arc(mx, my, 6.5, 0, Math.PI * 2);
+        ctx.fillStyle = "#f0ece0";
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
     _drawBackWall(ctx, box, water, tint, light) {
+      const night = this.phase.night;
+      const hue = lerp(tint.waterHue, tint.nightHue, night);
+      const sat = tint.waterSat + night * 8;
       const g = ctx.createLinearGradient(0, water.y, 0, water.sand);
-      g.addColorStop(0, hsl(186, 48, 36 * light + 12));
-      g.addColorStop(0.42, hsl(192, 50, 20 * light + 8));
-      g.addColorStop(1, hsl(204, 42, 8 * light + 5));
+      g.addColorStop(0, hsl(hue, sat, 36 * light + 12));
+      g.addColorStop(0.42, hsl(hue + 6, sat + 2, 20 * light + 8));
+      g.addColorStop(1, hsl(hue + 12, sat - 6, 8 * light + 5));
       ctx.fillStyle = g;
       ctx.fillRect(box.x, box.y, box.w, box.h);
       if (tint.wash) {
@@ -418,10 +662,12 @@
 
     _drawGodRays(ctx, water, t, light) {
       if (light < 0.4) return;
+      if (this.phase.night > 0.78 && !this.lights) return;
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
+      const mot = this._m();
       for (let i = 0; i < 6; i += 1) {
-        const x = water.x + ((i * 0.18 + t * 0.015) % 1) * water.w;
+        const x = water.x + ((i * 0.18 + t * 0.015 * mot) % 1) * water.w;
         ctx.beginPath();
         ctx.moveTo(x, water.y);
         ctx.lineTo(x + 18 + i * 4, water.sand);
@@ -473,7 +719,8 @@
 
     _drawFarPlants(ctx, water, t, tint) {
       const rng = new Rng(this.world.seed ^ 0x111);
-      for (let i = 0; i < 9; i += 1) {
+      const n = this.themeSpec().kelpCount;
+      for (let i = 0; i < n; i += 1) {
         const px = water.x + rng.random() * water.w;
         const h = 70 + rng.randrange(90);
         this._kelp(ctx, px, this.sandY(px), h, t, hsl(110 + tint.plant, 35, 16, 0.55), 0.6);
@@ -483,7 +730,7 @@
     _kelp(ctx, x, y, height, t, color, thin) {
       ctx.beginPath();
       ctx.moveTo(x, y);
-      const sway = Math.sin(t * 0.8 + x * 0.02) * 10 * thin;
+      const sway = Math.sin(t * 0.8 + x * 0.02) * 10 * thin * this._m();
       ctx.bezierCurveTo(x + sway, y - height * 0.35, x - sway * 1.2, y - height * 0.7, x + sway * 0.4, y - height);
       ctx.strokeStyle = color;
       ctx.lineWidth = 4 * thin;
@@ -516,6 +763,7 @@
     }
 
     _branchCoral(ctx, x, y, s, hue, t, phase) {
+      const mot = this._m();
       const drawArm = (x0, y0, ang, len, depth) => {
         const x1 = x0 + Math.cos(ang) * len;
         const y1 = y0 + Math.sin(ang) * len;
@@ -527,7 +775,7 @@
         ctx.lineCap = "round";
         ctx.stroke();
         if (depth < 3) {
-          const wob = Math.sin(t * 0.7 + phase + depth) * 0.08;
+          const wob = Math.sin(t * 0.7 + phase + depth) * 0.08 * mot;
           drawArm(x1, y1, ang - 0.55 + wob, len * 0.68, depth + 1);
           drawArm(x1, y1, ang + 0.62 + wob, len * 0.62, depth + 1);
         }
@@ -555,9 +803,10 @@
       ctx.ellipse(x, y - 4, 8 * s, 5 * s, 0, 0, Math.PI * 2);
       ctx.fillStyle = hsl(hue, 40, 28);
       ctx.fill();
+      const mot = this._m();
       for (let i = 0; i < 11; i += 1) {
         const a = -Math.PI + i * 0.28;
-        const wob = Math.sin(t * 1.4 + phase + i) * 8 * s;
+        const wob = Math.sin(t * 1.4 + phase + i) * 8 * s * mot;
         ctx.beginPath();
         ctx.moveTo(x, y - 6);
         ctx.quadraticCurveTo(x + Math.cos(a) * 10 * s + wob, y - 28 * s, x + Math.cos(a) * 16 * s, y - 36 * s);
@@ -592,21 +841,93 @@
       ctx.restore();
     }
 
+    _drawFilter(ctx, box, water, light) {
+      const x = box.x + 16;
+      const y = water.y - 4;
+      ctx.fillStyle = hsl(215, 10, 14 * light + 10);
+      ctx.fillRect(x - 10, y - 12, 26, 32);
+      ctx.fillStyle = hsl(215, 8, 8);
+      ctx.fillRect(x - 8, y - 8, 22, 7);
+      ctx.strokeStyle = hsl(200, 12, 28 * light + 10);
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(x + 2, y + 20);
+      ctx.lineTo(x + 2, this.sandY(x) - 16);
+      ctx.stroke();
+      ctx.fillStyle = hsl(200, 10, 22);
+      ctx.fillRect(x - 6, this.sandY(x) - 22, 16, 12);
+      ctx.fillStyle = hsl(200, 14, 36 * light + 12);
+      ctx.fillRect(x + 12, y + 6, 12, 5);
+      ctx.fillStyle = hsl(45, 70, 55 * light + 10);
+      ctx.fillRect(x - 4, y - 10, 4, 3);
+    }
+
+    _drawHeater(ctx, box, water, light) {
+      const x = box.x + box.w - 18;
+      const top = water.y + 28;
+      const bot = this.sandY(x) - 14;
+      ctx.strokeStyle = `rgba(170, 200, 214, ${0.35 + 0.25 * light})`;
+      ctx.lineWidth = 7;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, bot);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 92, 42, ${0.4 * light + 0.28})`;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(x, bot - 32);
+      ctx.lineTo(x, bot - 4);
+      ctx.stroke();
+      ctx.fillStyle = hsl(0, 45, 42);
+      ctx.beginPath();
+      ctx.arc(x - 6, top + 10, 3.2, 0, Math.PI * 2);
+      ctx.arc(x - 6, bot - 36, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     _drawPlankton(ctx, water, light) {
       const world = this.world;
+      const bio = this.themeSpec().bio;
       ctx.save();
-      ctx.globalAlpha = 0.22 * light;
+      ctx.globalAlpha = bio > 0.5 ? 0.28 + 0.2 * this.phase.night : 0.22 * light;
       for (let y = 0; y < world.height; y += 2) {
         for (let x = 0; x < world.width; x += 3) {
           const n = world.nutrients[y][x];
           if (n <= 0) continue;
           const px = water.x + ((x + 0.5) / world.width) * water.w;
           const py = water.y + ((y + 0.5) / world.height) * water.h;
-          ctx.fillStyle = hsl(80 + n * 8, 60, 60 + n * 3);
+          ctx.fillStyle = bio > 0.4
+            ? hsl(168 + n * 10, 80, 62 + n * 3)
+            : hsl(80 + n * 8, 60, 60 + n * 3);
           ctx.beginPath();
           ctx.arc(px, py, 0.7 + n * 0.18, 0, Math.PI * 2);
           ctx.fill();
         }
+      }
+      ctx.restore();
+    }
+
+    _drawBioSpark(ctx, water, now) {
+      const bio = this.themeSpec().bio;
+      if (bio < 0.35) return;
+      const rng = new Rng(this.world.seed ^ 0xb10);
+      const mot = this._m();
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const glow = 0.35 + this.phase.night * 0.55;
+      for (let i = 0; i < 52; i += 1) {
+        const baseX = rng.random();
+        const baseY = rng.random();
+        const speed = 0.012 + rng.random() * 0.03;
+        const px = water.x + ((baseX + now * 0.000035 * speed * mot) % 1) * water.w;
+        const py = water.y + ((baseY + Math.sin(now * 0.00028 * mot + i) * 0.04 + 1) % 1) * water.h;
+        const pulse = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(now * 0.0028 + i * 0.7));
+        ctx.fillStyle = hsl(164 + (i % 24), 90, 68, 0.28 * pulse * glow * bio);
+        ctx.beginPath();
+        ctx.arc(px, py, 1.05 + (i % 3) * 0.45, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.restore();
     }
@@ -623,8 +944,9 @@
       if (m.kind === "betta") { H = L * 0.42; }
       if (m.kind === "guppy") { L *= 0.82; H = L * 0.45; }
       if (m.kind === "tetra") { L *= 0.9; H = L * 0.32; }
-      const tail = Math.sin(now * 0.01 * m.speed + vis.phase) * 0.45;
-      const bob = Math.sin(now * 0.003 * m.speed + vis.phase) * 2.2;
+      const mot = this._m();
+      const tail = Math.sin(now * 0.01 * m.speed + vis.phase) * (0.18 + 0.27 * mot);
+      const bob = Math.sin(now * 0.003 * m.speed + vis.phase) * 2.2 * mot;
       ctx.save();
       ctx.translate(vis.px, vis.py + bob);
       ctx.scale(vis.facing, 1);
@@ -727,7 +1049,7 @@
     }
 
     _fins(ctx, m, L, H, tail, now) {
-      const flap = Math.sin(now * 0.012 + tail) * 0.25;
+      const flap = Math.sin(now * 0.012 + tail) * 0.25 * this._m();
       ctx.fillStyle = hsl(m.hue, 60, 46, 0.7);
       ctx.beginPath();
       ctx.moveTo(L * 0.05, -H * 0.2);
@@ -806,7 +1128,7 @@
     _drawShrimp(ctx, water, now) {
       this.shrimp.forEach((s) => {
         const x = water.x + s.x * water.w;
-        const y = this.sandY(x) - 6 + Math.sin(now * 0.004 + s.phase) * 2;
+        const y = this.sandY(x) - 6 + Math.sin(now * 0.004 + s.phase) * 2 * this._m();
         ctx.save();
         ctx.translate(x, y);
         ctx.scale(s.dir, 1);
@@ -870,16 +1192,17 @@
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       ctx.beginPath();
+      const mot = this._m();
       for (let i = 0; i < 4; i += 1) {
-        const y = water.y + ((t * 12 + i * 40) % water.h);
+        const y = water.y + ((t * 12 * mot + i * 40) % water.h);
         ctx.moveTo(water.x, y);
         for (let x = 0; x <= 20; x += 1) {
           const px = water.x + (x / 20) * water.w;
-          const py = y + Math.sin(px * 0.03 + t * 1.4 + i) * 6;
+          const py = y + Math.sin(px * 0.03 + t * 1.4 * mot + i) * 6 * mot;
           ctx.lineTo(px, py);
         }
       }
-      ctx.strokeStyle = `rgba(160, 220, 255, ${0.07 * light})`;
+      ctx.strokeStyle = `rgba(160, 220, 255, ${0.07 * light * (this.reducedMotion ? 0.35 : 1)})`;
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.restore();
@@ -887,11 +1210,12 @@
 
     _drawSurface(ctx, water, t, light) {
       ctx.save();
+      const mot = this._m();
       ctx.beginPath();
       ctx.moveTo(water.x, water.y);
       for (let i = 0; i <= 32; i += 1) {
         const px = water.x + (i / 32) * water.w;
-        const py = water.y + Math.sin(px * 0.045 + t * 1.6) * 2.2 + Math.sin(px * 0.12 + t * 2.1) * 1.1;
+        const py = water.y + Math.sin(px * 0.045 + t * 1.6) * 2.2 * mot + Math.sin(px * 0.12 + t * 2.1) * 1.1 * mot;
         ctx.lineTo(px, py);
       }
       ctx.lineTo(water.x + water.w, water.y - 10);
@@ -904,7 +1228,7 @@
       ctx.beginPath();
       for (let i = 0; i <= 32; i += 1) {
         const px = water.x + (i / 32) * water.w;
-        const py = water.y + Math.sin(px * 0.045 + t * 1.6) * 2.2;
+        const py = water.y + Math.sin(px * 0.045 + t * 1.6) * 2.2 * mot;
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
@@ -942,14 +1266,20 @@
     _drawHood(ctx, box, light) {
       ctx.fillStyle = "#14110f";
       ctx.fillRect(box.x - 6, box.y - 22, box.w + 12, 18);
-      if (light > 0.4) {
+      if (this.lights) {
+        const glow = 0.3 + 0.25 * Math.min(1, light);
+        const warm = this.theme === "moonlit"
+          ? `rgba(160, 200, 255, ${glow})`
+          : `rgba(255, 236, 190, ${glow + 0.08})`;
         const lamp = ctx.createLinearGradient(box.x, box.y - 4, box.x, box.y + 24);
-        lamp.addColorStop(0, "rgba(255, 236, 190, 0.55)");
+        lamp.addColorStop(0, warm);
         lamp.addColorStop(1, "rgba(255, 236, 190, 0)");
         ctx.fillStyle = lamp;
         ctx.fillRect(box.x + 10, box.y - 4, box.w - 20, 28);
       }
-      ctx.fillStyle = this.lights ? "#fde68a" : "#3f3f46";
+      ctx.fillStyle = this.lights
+        ? (this.theme === "moonlit" ? "#93c5fd" : "#fde68a")
+        : "#3f3f46";
       for (let i = 0; i < 8; i += 1) {
         const x = box.x + 24 + i * ((box.w - 48) / 7);
         ctx.beginPath();
@@ -962,8 +1292,9 @@
       if (!this.world) return;
       ctx.fillStyle = "rgba(8, 10, 14, 0.45)";
       ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
+      const theme = this.themeSpec().label.toLowerCase();
       ctx.fillText(
-        `${this.world.phrase}  ·  ${this.world.season()}  ·  tick ${this.world.tick_count}`,
+        `${this.world.phrase}  ·  ${this.world.season()}  ·  ${this.phase.label} ${this.phase.clock}  ·  ${theme}  ·  tick ${this.world.tick_count}`,
         box.x + 8,
         box.y + box.h + 12
       );
@@ -972,4 +1303,5 @@
 
   global.AquariumView = AquariumView;
   global.fishKind = fishKind;
+  global.THEMES = THEMES;
 })(window);

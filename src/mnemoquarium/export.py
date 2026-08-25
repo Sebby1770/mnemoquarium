@@ -239,6 +239,22 @@ def svg_document(world: World, *, cell: int = 12) -> str:
         f'stroke="rgba(180,210,230,0.4)" stroke-width="3"/>'
     )
 
+    # Tick-driven night wash (48 ticks ≈ one tank day). Winter stays a little darker.
+    cycle = (world.tick_count % 48) / 48.0
+    night = 0.5 + 0.5 * math.cos(cycle * math.pi * 2)
+    if world.season() == "winter":
+        night = min(1.0, night + 0.12)
+    if night > 0.32:
+        alpha = 0.10 + 0.22 * night
+        parts.append(
+            f'<rect class="moonlit-tint" x="{ox:.1f}" y="{oy:.1f}" width="{tw:.1f}" '
+            f'height="{th:.1f}" fill="rgba(18,36,90,{alpha:.2f})"/>'
+        )
+    if night > 0.55:
+        parts.append(
+            f'<circle class="moon" cx="{ox + tw - 36:.1f}" cy="{oy - 10:.1f}" r="7" fill="#e8e4d4"/>'
+        )
+
     legend_y = oy + th + 36
     parts.append(f'<text x="24" y="{legend_y}" class="small">species ledger</text>')
     for index, (sp, count) in enumerate(ranked_species(world), start=1):

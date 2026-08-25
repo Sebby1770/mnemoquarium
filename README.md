@@ -2,7 +2,7 @@
 
 **Live lab:** [https://sebby1770.github.io/mnemoquarium/](https://sebby1770.github.io/mnemoquarium/)
 
-Deterministic phrase-fed artificial life. Type a phrase and look **through the glass** of a side-view aquarium: fish, sand, coral, kelp, and brine. Or run the Python CLI.
+Deterministic phrase-fed artificial life. Type a phrase and look **through the glass** of a living side-view aquarium: day and night, reef or kelp or moonlit water, schooling fish, sand, coral, and brine. Or run the Python CLI.
 
 Mnemoquarium is a tiny artificial-life lab for the terminal and the browser.
 
@@ -116,9 +116,11 @@ detects non-TTY output and skips screen clears when piped.
 PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
-The live lab (`web/`) is a side-view tank: hood lights, glass, sand dunes,
-seed-derived coral, and fish whose body plan comes from each species' traits.
-Click a fish to inspect it, feed flakes, or tap the glass.
+The live lab (`web/`) is a living side-view tank: day/night, themes, hood
+lights, glass, sand dunes, seed-derived coral, and fish whose body plan comes
+from each species' traits. Click a fish to inspect it, feed flakes, tap the
+glass, save a photo, or turn on optional tank sound. Keyboard: F feed, T tap,
+L lights, Space pause, S photo.
 
 The project is intentionally small enough to read in one sitting:
 

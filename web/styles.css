@@ -7,6 +7,7 @@
   --accent: #7ec8c3;
   --warm: #e0b36a;
   --wood: #2a1b12;
+  --sky: #120e0b;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
@@ -14,9 +15,49 @@ body.room {
   background:
     radial-gradient(900px 420px at 20% 0%, rgba(80, 50, 20, 0.28), transparent 60%),
     radial-gradient(700px 380px at 90% 10%, rgba(20, 40, 50, 0.25), transparent 55%),
-    linear-gradient(180deg, #120e0b, var(--bg) 40%, #050403);
+    linear-gradient(180deg, var(--sky, #120e0b), var(--bg) 40%, #050403);
   color: var(--ink);
   font-family: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+  transition: background 1.4s ease;
+}
+body.room[data-phase="dawn"] {
+  --sky: #1c1410;
+  background:
+    radial-gradient(800px 380px at 15% 0%, rgba(220, 140, 70, 0.22), transparent 58%),
+    radial-gradient(640px 320px at 88% 8%, rgba(40, 60, 90, 0.2), transparent 55%),
+    linear-gradient(180deg, #1a120e, var(--bg) 42%, #050403);
+}
+body.room[data-phase="day"] {
+  --sky: #1a1612;
+  background:
+    radial-gradient(900px 420px at 20% 0%, rgba(80, 50, 20, 0.28), transparent 60%),
+    radial-gradient(700px 380px at 90% 10%, rgba(20, 70, 90, 0.22), transparent 55%),
+    linear-gradient(180deg, #181410, var(--bg) 40%, #050403);
+}
+body.room[data-phase="dusk"] {
+  --sky: #140e12;
+  background:
+    radial-gradient(820px 360px at 78% 0%, rgba(180, 70, 50, 0.22), transparent 58%),
+    radial-gradient(620px 300px at 12% 8%, rgba(30, 20, 50, 0.28), transparent 55%),
+    linear-gradient(180deg, #160e10, var(--bg) 42%, #040306);
+}
+body.room[data-phase="night"] {
+  --sky: #05070e;
+  background:
+    radial-gradient(2px 2px at 12% 18%, rgba(232, 240, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 28% 8%, rgba(232, 240, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 63% 14%, rgba(253, 230, 138, 0.45), transparent),
+    radial-gradient(1px 1px at 81% 6%, rgba(232, 240, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 47% 22%, rgba(232, 240, 255, 0.35), transparent),
+    radial-gradient(700px 320px at 82% 0%, rgba(80, 100, 160, 0.18), transparent 60%),
+    linear-gradient(180deg, #05070e, #070605 45%, #030308);
+}
+body.room[data-theme="kelp"] {
+  --accent: #8fce9a;
+}
+body.room[data-theme="moonlit"] {
+  --accent: #8eb6e8;
+  --warm: #c4b8e0;
 }
 .mast, .gallery, .compare { max-width: 1280px; margin: 0 auto; padding: 20px 22px; }
 .mast { display: flex; justify-content: space-between; gap: 16px; align-items: end; }
@@ -60,14 +101,15 @@ label {
   font-family: ui-sans-serif, system-ui, sans-serif;
 }
 label.grow { flex: 1 1 240px; }
-input, button, pre {
+input, button, pre, select {
   font-family: ui-sans-serif, system-ui, sans-serif;
   color: var(--ink);
   background: #120c09;
   border: 1px solid #4a3424;
   border-radius: 10px;
 }
-input { padding: 8px 10px; }
+input, select { padding: 8px 10px; }
+select { min-width: 132px; }
 button { padding: 9px 12px; cursor: pointer; font-weight: 700; }
 button.primary { background: var(--accent); color: #06211c; border-color: var(--accent); }
 button.ghost { background: transparent; }
@@ -89,6 +131,22 @@ button.ghost { background: transparent; }
 }
 #tank { aspect-ratio: 1100 / 620; }
 #tank-a, #tank-b { aspect-ratio: 520 / 280; border-radius: 8px; }
+.hud-clock {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(8, 12, 16, 0.62);
+  border: 1px solid rgba(180, 210, 230, 0.18);
+  color: #dbeafe;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
 .inspect {
   position: absolute;
   right: 14px;
@@ -171,3 +229,8 @@ pre {
   border-radius: 0;
 }
 .cabinet:fullscreen #tank { height: calc(100vh - 140px); aspect-ratio: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  body.room { transition: none; }
+  html { scroll-behavior: auto; }
+}
