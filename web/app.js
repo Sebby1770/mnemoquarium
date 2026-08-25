@@ -1,13 +1,17 @@
 const canvas = document.getElementById("tank");
-const ctx = canvas.getContext("2d");
 const phraseInput = document.getElementById("phrase");
 const seedInput = document.getElementById("seed");
 const popInput = document.getElementById("population");
 const speedInput = document.getElementById("speed");
+const inspectEl = document.getElementById("inspect");
+
+const view = new AquariumView(canvas);
+const compareA = new AquariumView(document.getElementById("tank-a"));
+const compareB = new AquariumView(document.getElementById("tank-b"));
 
 let world = World.fromPhrase(phraseInput.value, { population: Number(popInput.value) });
 let playing = true;
-let last = 0;
+let lastStep = 0;
 
 function delay() {
   return 420 - Number(speedInput.value) * 18;
@@ -18,56 +22,11 @@ function growFromForm() {
     seed: seedInput.value === "" ? undefined : Number(seedInput.value),
     population: Number(popInput.value) || 28,
   });
-  draw();
+  view.attach(world);
+  paintHud();
 }
 
-function draw() {
-  const w = canvas.width;
-  const h = canvas.height;
-  const cellW = w / world.width;
-  const cellH = h / world.height;
-  ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = "#061318";
-  ctx.fillRect(0, 0, w, h);
-
-  for (let y = 0; y < world.height; y += 1) {
-    for (let x = 0; x < world.width; x += 1) {
-      const n = world.nutrients[y][x];
-      const light = 8 + n * 6;
-      ctx.fillStyle = `hsla(185, 42%, ${light}%, ${0.18 + n * 0.07})`;
-      ctx.fillRect(x * cellW, y * cellH, cellW + 0.5, cellH + 0.5);
-    }
-  }
-
-  const groups = new Map();
-  for (const org of world.organisms) {
-    const key = `${org.x},${org.y}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(org);
-  }
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  groups.forEach((list, key) => {
-    const [x, y] = key.split(",").map(Number);
-    const top = list.slice().sort((a, b) => b.energy - a.energy)[0];
-    const sp = world.species[top.species_index];
-    const cx = x * cellW + cellW / 2;
-    const cy = y * cellH + cellH / 2;
-    const r = Math.max(3, Math.min(cellW * 0.46, 2 + top.energy * 0.12));
-    ctx.fillStyle = `hsl(${sp.hue} 78% 56%)`;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#071014";
-    ctx.font = `700 ${Math.max(9, Math.floor(cellW * 0.62))}px ui-monospace, monospace`;
-    ctx.fillText(sp.glyph, cx, cy + 0.5);
-    if (list.length > 1) {
-      ctx.fillStyle = "#e2e8f0";
-      ctx.font = "700 10px ui-monospace, monospace";
-      ctx.fillText(String(list.length), cx + r * 0.7, cy - r * 0.7);
-    }
-  });
-
+function paintHud() {
   const census = world.census();
   document.getElementById("kpis").innerHTML = [
     ["Tick", census.tick],
@@ -81,23 +40,53 @@ function draw() {
   document.getElementById("legend").innerHTML = census.species
     .slice()
     .sort((a, b) => b.population - a.population)
-    .map((sp) => `
+    .map((sp) => {
+      const kind = typeof fishKind === "function" ? fishKind(sp) : "";
+      return `
       <div class="sp">
         <span class="dot" style="background:hsl(${sp.hue} 78% 56%)"></span>
-        <span>${sp.glyph} ${sp.name} · ${sp.population} · from ${sp.source_word}</span>
-      </div>`).join("");
+        <span>${sp.glyph} ${sp.name} · ${sp.population}</span>
+        <span class="kind">${kind || ""}</span>
+      </div>`;
+    }).join("");
 
   const events = world.events.length ? world.events : ["the brine is quiet"];
   document.getElementById("events").innerHTML = events.map((e) => `<li>${e}</li>`).join("");
 }
 
-function tick(now) {
-  if (playing && now - last >= delay()) {
-    world.step();
-    draw();
-    last = now;
+view.onPick = (vis) => {
+  if (!vis) {
+    inspectEl.hidden = true;
+    inspectEl.innerHTML = "";
+    return;
   }
-  requestAnimationFrame(tick);
+  const sp = vis.sp;
+  inspectEl.hidden = false;
+  inspectEl.innerHTML = `
+    <strong>${sp.name}</strong>
+    ${fishKind(sp)} from “${sp.source_word}”<br>
+    energy ${vis.org.energy} · age ${vis.org.age}<br>
+    eat ${sp.appetite} · curious ${sp.curiosity}
+  `;
+};
+
+function loop(now) {
+  if (playing && now - lastStep >= delay()) {
+    world.step();
+    paintHud();
+    lastStep = now;
+  }
+  view.stepVisual(now);
+  view.draw(now);
+  if (compareA.world) {
+    compareA.stepVisual(now);
+    compareA.draw(now);
+  }
+  if (compareB.world) {
+    compareB.stepVisual(now);
+    compareB.draw(now);
+  }
+  requestAnimationFrame(loop);
 }
 
 document.getElementById("seed-form").addEventListener("submit", (event) => {
@@ -112,8 +101,36 @@ document.getElementById("btn-step").addEventListener("click", () => {
   playing = false;
   document.getElementById("btn-play").textContent = "Play";
   world.step();
-  draw();
+  paintHud();
 });
+document.getElementById("btn-feed").addEventListener("click", () => view.feed());
+document.getElementById("btn-lights").addEventListener("click", (event) => {
+  view.lights = !view.lights;
+  event.target.textContent = view.lights ? "Lights" : "Lights (off)";
+});
+document.getElementById("btn-tap").addEventListener("click", () => {
+  const water = view.waterRect();
+  view.tap(water.x + water.w * 0.5, water.y + water.h * 0.35);
+});
+document.getElementById("btn-full").addEventListener("click", async () => {
+  const cabinet = document.querySelector(".cabinet");
+  if (!document.fullscreenElement) await cabinet.requestFullscreen();
+  else await document.exitFullscreen();
+});
+canvas.addEventListener("click", (event) => {
+  const pt = view.eventToLocal(event);
+  const hit = view.pickAt(pt.x, pt.y);
+  if (!hit) view.tap(pt.x, pt.y);
+});
+window.addEventListener("resize", () => {
+  view.resize();
+  compareA.resize();
+  compareB.resize();
+});
+document.addEventListener("fullscreenchange", () => {
+  view.resize();
+});
+
 document.getElementById("btn-share").addEventListener("click", async () => {
   const url = new URL(location.href);
   url.hash = new URLSearchParams({
@@ -130,6 +147,7 @@ document.getElementById("btn-share").addEventListener("click", async () => {
     prompt("Copy this tank URL", url.toString());
   }
 });
+
 document.getElementById("btn-compare").addEventListener("click", () => {
   const steps = Number(document.getElementById("compare-steps").value) || 48;
   const a = World.fromPhrase(document.getElementById("phrase-a").value);
@@ -138,6 +156,12 @@ document.getElementById("btn-compare").addEventListener("click", () => {
     a.step();
     b.step();
   }
+  document.getElementById("label-a").textContent = a.phrase;
+  document.getElementById("label-b").textContent = b.phrase;
+  compareA.attach(a);
+  compareB.attach(b);
+  compareA.resize();
+  compareB.resize();
   document.getElementById("compare-out").textContent = compareWorlds(a, b);
 });
 
@@ -146,4 +170,4 @@ if (boot.get("phrase")) phraseInput.value = boot.get("phrase");
 if (boot.get("seed")) seedInput.value = boot.get("seed");
 if (boot.get("pop")) popInput.value = boot.get("pop");
 growFromForm();
-requestAnimationFrame(tick);
+requestAnimationFrame(loop);
