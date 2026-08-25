@@ -2,10 +2,29 @@ from __future__ import annotations
 
 import html
 import json
+import math
 
-from .display import dominant_organism, organisms_by_cell
-from .model import World, ranked_species
+from .model import Species, World, ranked_species
 from .snapshot import detailed_snapshot
+
+FISH_KINDS = ("tetra", "guppy", "angel", "betta", "catfish", "eel")
+
+
+def fish_kind(sp: Species) -> str:
+    """Match the browser tank: bottom-dwellers, angels, tetras, else seed."""
+    if sp.appetite >= 3 and sp.curiosity <= 2:
+        return "catfish"
+    if sp.stubbornness >= 6:
+        return "angel"
+    if sp.curiosity >= 6 and sp.appetite <= 2:
+        return "tetra"
+    return FISH_KINDS[sp.seed % len(FISH_KINDS)]
+
+
+def _sand_y(x: float, width: float, seed: int, base: float) -> float:
+    n = (x / max(width, 1.0)) * math.pi * 2
+    rise = 18 + 10 * math.sin(n * 1.2 + seed) + 6 * math.sin(n * 2.7 + seed * 0.3)
+    return base - rise
 
 
 def json_document(world: World) -> str:
@@ -45,14 +64,18 @@ def field_report(world: World) -> str:
 
 
 def svg_document(world: World, *, cell: int = 12) -> str:
-    margin = 18
-    legend_height = 108 + len(world.species) * 18
-    width = world.width * cell + margin * 2
-    grid_height = world.height * cell
-    height = grid_height + legend_height + margin * 2
+    """Side-view aquarium specimen: glass, water, sand, coral, fish."""
+    _ = cell  # kept for callers; the tank is a fixed widescreen view
+    width = 960
+    tank_h = 420
+    legend_height = 92 + len(world.species) * 18
+    height = tank_h + legend_height + 36
     title = html.escape("Mnemoquarium specimen")
     phrase = html.escape(world.phrase)
     fossil = html.escape(world.fossil_hash())
+    ox, oy, tw, th = 24.0, 72.0, 912.0, 330.0
+    sand_base = oy + th - 8
+    water_top = oy + 16
 
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -62,69 +85,174 @@ def svg_document(world: World, *, cell: int = 12) -> str:
         ),
         "<defs>",
         "<style>",
-        "text { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }",
-        ".small { font-size: 12px; fill: #d8e3ef; }",
-        ".label { font-size: 11px; fill: #93a4b8; }",
+        "text { font-family: ui-sans-serif, system-ui, sans-serif; }",
+        ".small { font-size: 13px; fill: #e8dfd2; }",
+        ".label { font-size: 11px; fill: #9a8c78; }",
         "</style>",
+        '<linearGradient id="water" x1="0" y1="0" x2="0" y2="1">',
+        '<stop offset="0" stop-color="#6eb7c8"/>',
+        '<stop offset="0.45" stop-color="#1a5c6e"/>',
+        '<stop offset="1" stop-color="#0b2430"/>',
+        "</linearGradient>",
+        '<linearGradient id="sandg" x1="0" y1="0" x2="0" y2="1">',
+        '<stop offset="0" stop-color="#d2b48c"/>',
+        '<stop offset="1" stop-color="#8a6a3b"/>',
+        "</linearGradient>",
         "</defs>",
-        '<rect width="100%" height="100%" fill="#071014"/>',
-        f'<text x="{margin}" y="25" class="small">{title}</text>',
-        f'<text x="{margin}" y="44" class="label">phrase: {phrase}</text>',
-        f'<text x="{margin}" y="62" class="label">tick: {world.tick_count} / fossil: {fossil}</text>',
+        '<rect class="room" width="100%" height="100%" fill="#120c08"/>',
+        f'<text x="24" y="28" class="small">{title}</text>',
+        f'<text x="24" y="48" class="label">phrase: {phrase} · tick {world.tick_count} · {world.season()} · fossil {fossil}</text>',
+        f'<rect class="tank-glass" x="{ox - 6:.1f}" y="{oy - 18:.1f}" width="{tw + 12:.1f}" '
+        f'height="{th + 26:.1f}" rx="8" fill="#1b120c" stroke="#5a3b24"/>',
+        f'<rect x="{ox:.1f}" y="{oy:.1f}" width="{tw:.1f}" height="{th:.1f}" fill="url(#water)"/>',
     ]
 
-    ox = margin
-    oy = margin + 60
+    # God rays
+    for i in range(5):
+        x = ox + 40 + i * (tw / 5)
+        parts.append(
+            f'<polygon points="{x:.1f},{water_top:.1f} {x + 18:.1f},{sand_base:.1f} '
+            f'{x + 70:.1f},{sand_base:.1f} {x + 22:.1f},{water_top:.1f}" '
+            f'fill="rgba(180,230,255,0.07)"/>'
+        )
+
+    # Far kelp
+    for i in range(8):
+        kx = ox + 30 + ((world.seed * (i + 3)) % int(tw - 60))
+        h = 70 + (world.seed + i * 17) % 90
+        parts.append(
+            f'<path d="M{kx:.1f},{sand_base:.1f} C{kx + 12:.1f},{sand_base - h * 0.4:.1f} '
+            f'{kx - 14:.1f},{sand_base - h * 0.7:.1f} {kx + 4:.1f},{sand_base - h:.1f}" '
+            f'stroke="hsl(120 35% 22%)" stroke-width="4" fill="none" stroke-linecap="round"/>'
+        )
+
+    sand_pts = [f"{ox:.1f},{sand_base + 6:.1f}"]
+    for i in range(33):
+        px = ox + (i / 32) * tw
+        py = _sand_y(px, tw, world.seed, sand_base)
+        sand_pts.append(f"{px:.1f},{py:.1f}")
+    sand_pts.append(f"{ox + tw:.1f},{sand_base + 6:.1f}")
     parts.append(
-        f'<rect x="{ox - 1}" y="{oy - 1}" width="{world.width * cell + 2}" '
-        f'height="{grid_height + 2}" fill="#0d1b20" stroke="#24404a"/>'
+        f'<path class="tank-sand" d="M{" L".join(sand_pts)} Z" fill="url(#sandg)"/>'
     )
-    for y, row in enumerate(world.nutrients):
-        for x, value in enumerate(row):
-            light = 8 + value * 6
-            opacity = 0.25 + value * 0.055
+
+    # Coral / rocks from seed
+    rng_state = world.seed & 0xFFFFFFFF
+    for i in range(7):
+        rng_state = (rng_state * 1664525 + 1013904223) & 0xFFFFFFFF
+        cx = ox + 50 + (rng_state % int(tw - 100))
+        rng_state = (rng_state * 1664525 + 1013904223) & 0xFFFFFFFF
+        kind = ("branch", "brain", "anemone", "rock")[rng_state % 4]
+        hue = 20 + (rng_state % 80)
+        sy = _sand_y(cx, tw, world.seed, sand_base)
+        if kind == "brain":
             parts.append(
-                f'<rect x="{ox + x * cell}" y="{oy + y * cell}" '
-                f'width="{cell}" height="{cell}" fill="hsl(185 42% {light}%)" '
-                f'opacity="{opacity:.2f}"/>'
+                f'<ellipse cx="{cx:.1f}" cy="{sy - 10:.1f}" rx="16" ry="11" '
+                f'fill="hsl({hue} 50% 46%)"/>'
+            )
+        elif kind == "rock":
+            parts.append(
+                f'<path d="M{cx - 18:.1f},{sy:.1f} Q{cx - 10:.1f},{sy - 20:.1f} {cx:.1f},{sy - 16:.1f} '
+                f'Q{cx + 16:.1f},{sy - 22:.1f} {cx + 20:.1f},{sy:.1f} Z" fill="hsl(220 8% 28%)"/>'
+            )
+        elif kind == "anemone":
+            parts.append(
+                f'<ellipse cx="{cx:.1f}" cy="{sy - 4:.1f}" rx="7" ry="4" fill="hsl({hue} 40% 28%)"/>'
+            )
+            for t in range(7):
+                ang = -3.0 + t * 0.4
+                tx = cx + math.cos(ang) * 14
+                ty = sy - 28
+                parts.append(
+                    f'<path d="M{cx:.1f},{sy - 6:.1f} Q{cx + math.cos(ang) * 8:.1f},{sy - 20:.1f} '
+                    f'{tx:.1f},{ty:.1f}" stroke="hsl({hue + t * 4} 70% 58%)" fill="none" stroke-width="1.6"/>'
+                )
+        else:
+            parts.append(
+                f'<path d="M{cx:.1f},{sy:.1f} L{cx:.1f},{sy - 28:.1f} M{cx:.1f},{sy - 16:.1f} '
+                f'L{cx - 12:.1f},{sy - 30:.1f} M{cx:.1f},{sy - 16:.1f} L{cx + 11:.1f},{sy - 32:.1f}" '
+                f'stroke="hsl({hue} 55% 44%)" stroke-width="4" stroke-linecap="round" fill="none"/>'
             )
 
-    for (x, y), occupants in organisms_by_cell(world).items():
-        organism = dominant_organism(occupants)
-        sp = world.species[organism.species_index]
-        energy = organism.energy
-        radius = max(3, min(cell * 0.48, 2 + energy * 0.18))
-        cx = ox + x * cell + cell / 2
-        cy = oy + y * cell + cell / 2
-        glyph = html.escape(sp.glyph)
+    # Bubbles from an aerator
+    ax = ox + 40 + (world.seed % 80)
+    for i in range(8):
+        by = sand_base - 20 - i * 28
         parts.append(
-            f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{radius:.1f}" '
-            f'fill="hsl({sp.hue} 78% 56%)" opacity="0.88"/>'
+            f'<circle cx="{ax + (i % 3) * 3:.1f}" cy="{by:.1f}" r="{1.5 + (i % 3) * 0.6:.1f}" '
+            f'fill="rgba(200,230,255,0.2)" stroke="rgba(255,255,255,0.45)"/>'
         )
-        parts.append(
-            f'<text x="{cx:.1f}" y="{cy + 3:.1f}" text-anchor="middle" '
-            f'font-size="{max(8, cell - 2)}" fill="#071014">{glyph}</text>'
-        )
-        if len(occupants) > 1:
-            parts.append(
-                f'<text x="{cx + cell * 0.28:.1f}" y="{cy - cell * 0.22:.1f}" '
-                f'font-size="8" fill="#d8e3ef">{len(occupants)}</text>'
-            )
 
-    legend_y = oy + grid_height + 28
-    parts.append(f'<text x="{margin}" y="{legend_y}" class="small">species ledger</text>')
+    def map_org(org) -> tuple[float, float, str]:
+        sp = world.species[org.species_index]
+        kind = fish_kind(sp)
+        nx = (org.x + 0.5) / world.width
+        ny = (org.y + 0.5) / world.height
+        px = ox + nx * tw
+        py = water_top + 18 + ny * (th - 70)
+        if kind == "catfish":
+            py = sand_base - 14 - (org.genome % 9)
+        elif kind == "eel":
+            py = water_top + (th * 0.62) + ny * 30
+        return px, py, kind
+
+    for org in sorted(world.organisms, key=lambda o: o.y):
+        sp = world.species[org.species_index]
+        px, py, kind = map_org(org)
+        length = 16 + org.energy * 0.35 + (sp.lifespan % 8)
+        height = length * (1.1 if kind == "angel" else 0.16 if kind == "eel" else 0.36)
+        facing = 1 if (org.genome >> 3) % 2 == 0 else -1
+        hue = sp.hue
+        # Teardrop body as an ellipse plus a tail polygon
+        parts.append(f'<g class="fish-body" transform="translate({px:.1f} {py:.1f}) scale({facing} 1)">')
+        parts.append(
+            f'<ellipse cx="0" cy="0" rx="{length * 0.42:.1f}" ry="{height * 0.55:.1f}" '
+            f'fill="hsl({hue} 78% 52%)"/>'
+        )
+        parts.append(
+            f'<polygon points="{-length * 0.4:.1f},0 {-length * 0.75:.1f},{-height * 0.55:.1f} '
+            f'{-length * 0.55:.1f},0 {-length * 0.75:.1f},{height * 0.55:.1f}" '
+            f'fill="hsl({(hue + 12) % 360} 65% 48%)"/>'
+        )
+        if kind == "angel":
+            parts.append(
+                f'<polygon points="0,{-height * 0.2:.1f} {-length * 0.1:.1f},{-height * 1.3:.1f} '
+                f'{-length * 0.25:.1f},0" fill="hsl({hue} 60% 46%)"/>'
+            )
+        parts.append(
+            f'<circle cx="{length * 0.22:.1f}" cy="{-height * 0.08:.1f}" r="{max(1.4, height * 0.14):.1f}" fill="#f4f1e6"/>'
+        )
+        parts.append(
+            f'<circle cx="{length * 0.26:.1f}" cy="{-height * 0.08:.1f}" r="{max(0.7, height * 0.07):.1f}" fill="#121418"/>'
+        )
+        parts.append("</g>")
+
+    # Glass highlight + waterline
+    parts.append(
+        f'<rect x="{ox:.1f}" y="{oy:.1f}" width="22" height="{th:.1f}" fill="rgba(255,255,255,0.12)"/>'
+    )
+    parts.append(
+        f'<rect x="{ox:.1f}" y="{water_top:.1f}" width="{tw:.1f}" height="3" fill="rgba(255,255,255,0.28)"/>'
+    )
+    parts.append(
+        f'<rect x="{ox:.1f}" y="{oy:.1f}" width="{tw:.1f}" height="{th:.1f}" fill="none" '
+        f'stroke="rgba(180,210,230,0.4)" stroke-width="3"/>'
+    )
+
+    legend_y = oy + th + 36
+    parts.append(f'<text x="24" y="{legend_y}" class="small">species ledger</text>')
     for index, (sp, count) in enumerate(ranked_species(world), start=1):
         y = legend_y + index * 18
         glyph = html.escape(sp.glyph)
         name = html.escape(sp.name)
         source = html.escape(sp.source_word)
+        kind = fish_kind(sp)
         parts.append(
-            f'<circle cx="{margin + 6}" cy="{y - 4}" r="5" '
-            f'fill="hsl({sp.hue} 78% 56%)"/>'
+            f'<circle cx="30" cy="{y - 4}" r="5" fill="hsl({sp.hue} 78% 56%)"/>'
         )
         parts.append(
-            f'<text x="{margin + 18}" y="{y}" class="label">'
-            f'{glyph} {name} from "{source}" - pop {count}, '
+            f'<text x="42" y="{y}" class="label">'
+            f'{glyph} {name} ({kind}) from "{source}" — pop {count}, '
             f'eat {sp.appetite}, curious {sp.curiosity}, split {sp.split_threshold}'
             "</text>"
         )

@@ -2,6 +2,21 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [0.5.0] - 2026-08-25
+
+### Added
+- Side-view aquarium in the browser lab: glass tank, hood lights, sand bed,
+  branching coral, anemones, kelp, bubbles, shrimp, and a glass snail.
+- Six fish morphologies (tetra, guppy, angelfish, betta, catfish, eel) derived
+  from species traits, with smooth swimming between ticks.
+- Feed flakes, tap-the-glass startle, click-to-inspect, lights, fullscreen.
+- Compare mode now draws two live mini-tanks.
+- SVG specimen export is a side-view tank (sand, coral, fish) instead of a
+  glyph grid.
+
+### Changed
+- Version bumped to 0.5.0.
+
 ## [0.4.1] - 2026-08-18
 
 ### Added

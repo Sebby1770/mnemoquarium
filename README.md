@@ -2,9 +2,9 @@
 
 **Live lab:** [https://sebby1770.github.io/mnemoquarium/](https://sebby1770.github.io/mnemoquarium/)
 
-Deterministic phrase-fed artificial life. Type a phrase in the browser tank or run the Python CLI.
+Deterministic phrase-fed artificial life. Type a phrase and look **through the glass** of a side-view aquarium: fish, sand, coral, kelp, and brine. Or run the Python CLI.
 
-Mnemoquarium is a tiny artificial-life lab for the terminal.
+Mnemoquarium is a tiny artificial-life lab for the terminal and the browser.
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 
@@ -17,7 +17,7 @@ It is deliberately odd, but useful as a compact Python project:
 - pure standard library, no runtime dependencies
 - deterministic simulations from phrase seeds
 - animated ANSI terminal rendering
-- SVG specimen card export
+- side-view SVG tank export (sand, coral, fish)
 - JSON snapshot export
 - Markdown field report export
 - installable CLI plus a testable simulation core
@@ -116,10 +116,15 @@ detects non-TTY output and skips screen clears when piped.
 PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
+The live lab (`web/`) is a side-view tank: hood lights, glass, sand dunes,
+seed-derived coral, and fish whose body plan comes from each species' traits.
+Click a fish to inspect it, feed flakes, or tap the glass.
+
 The project is intentionally small enough to read in one sitting:
 
 - `src/mnemoquarium/model.py` — simulation core
 - `src/mnemoquarium/display.py` — shared cell occupancy helpers
 - `src/mnemoquarium/render.py` — ANSI rendering
-- `src/mnemoquarium/export.py` — SVG, JSON, and Markdown exporters
+- `src/mnemoquarium/export.py` — SVG tank, JSON, and Markdown exporters
 - `src/mnemoquarium/cli.py` — argument parsing and orchestration
+- `web/tank.js` — canvas side-view aquarium
