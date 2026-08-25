@@ -3,65 +3,100 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Mnemoquarium</title>
-    <meta name="description" content="A phrase-fed memory aquarium. Type words, grow species, watch the brine remember.">
+    <title>Mnemoquarium — living memory tank</title>
+    <meta name="description" content="A living side-view aquarium: day and night, reef and kelp themes, schooling fish, and phrase-fed brine.">
     <link rel="stylesheet" href="./styles.css">
   </head>
-  <body>
-    <header class="top">
+  <body class="room" data-phase="day" data-theme="reef">
+    <header class="mast">
       <div>
-        <p class="eyebrow">memory aquarium · v0.4</p>
+        <p class="eyebrow">living tank · v0.6</p>
         <h1>Mnemoquarium</h1>
+        <p class="lede">You are looking through the glass. Each word in the phrase becomes a species of fish. The room above the tank keeps time; sand, coral, and brine remember the seed.</p>
       </div>
       <nav>
         <a href="https://github.com/Sebby1770/mnemoquarium">GitHub</a>
-        <button class="ghost" id="btn-share">Copy share link</button>
+        <button class="ghost" id="btn-share" type="button">Copy share link</button>
       </nav>
     </header>
 
-    <main>
-      <form id="seed-form" class="controls">
-        <label class="grow">Phrase
-          <input id="phrase" type="text" value="forgotten kiosk under neon rain" autocomplete="off">
-        </label>
-        <label>Seed
-          <input id="seed" type="number" placeholder="auto">
-        </label>
-        <label>Pop
-          <input id="population" type="number" min="4" max="120" value="28">
-        </label>
-        <button class="primary" type="submit">Grow</button>
-        <button type="button" id="btn-play">Pause</button>
-        <button type="button" id="btn-step">Step</button>
-        <label class="speed">Speed
-          <input id="speed" type="range" min="1" max="20" value="8">
-        </label>
-      </form>
+    <div class="gallery">
+      <div class="cabinet">
+        <form id="seed-form" class="hood">
+          <label class="grow">Phrase
+            <input id="phrase" type="text" value="forgotten kiosk under neon rain" autocomplete="off">
+          </label>
+          <label>Seed
+            <input id="seed" type="number" placeholder="auto">
+          </label>
+          <label>Pop
+            <input id="population" type="number" min="4" max="120" value="28">
+          </label>
+          <label>Theme
+            <select id="theme">
+              <option value="reef">Reef</option>
+              <option value="kelp">Kelp forest</option>
+              <option value="moonlit">Moonlit</option>
+            </select>
+          </label>
+          <button class="primary" type="submit">Grow</button>
+          <button type="button" id="btn-play">Pause</button>
+          <button type="button" id="btn-step">Step</button>
+          <label class="speed">Speed
+            <input id="speed" type="range" min="1" max="20" value="8">
+          </label>
+        </form>
 
-      <section class="stage">
-        <canvas id="tank" width="960" height="420" aria-label="Habitat"></canvas>
-        <aside>
-          <div class="kpis" id="kpis"></div>
-          <h2>Species</h2>
-          <div id="legend"></div>
-          <h2>Events</h2>
-          <ul id="events"></ul>
-        </aside>
-      </section>
-
-      <section class="compare card">
-        <h2>Compare two phrases</h2>
-        <div class="row">
-          <input id="phrase-a" type="text" value="neon rain">
-          <input id="phrase-b" type="text" value="static bloom">
-          <label>Steps <input id="compare-steps" type="number" min="8" max="200" value="48"></label>
-          <button type="button" id="btn-compare">Run compare</button>
+        <div class="bezel">
+          <canvas id="tank" width="1100" height="620" aria-label="Side-view aquarium"></canvas>
+          <p class="hud-clock" id="hud-clock">day · 12:00 · reef</p>
+          <aside class="inspect" id="inspect" hidden></aside>
         </div>
-        <pre id="compare-out"></pre>
-      </section>
-    </main>
+
+        <div class="base">
+          <button type="button" id="btn-feed">Feed flakes</button>
+          <button type="button" id="btn-tap">Tap glass</button>
+          <button type="button" id="btn-lights">Lights</button>
+          <button type="button" id="btn-photo">Save photo</button>
+          <button type="button" id="btn-sound" aria-pressed="false">Sound</button>
+          <button type="button" id="btn-full">Fullscreen tank</button>
+          <p class="hint">Click a fish to inspect. Keys: F feed · T tap · L lights · Space pause · S photo. Sound starts only when you turn it on.</p>
+        </div>
+      </div>
+
+      <aside class="clipboard">
+        <div class="kpis" id="kpis"></div>
+        <h2>Species</h2>
+        <div id="legend"></div>
+        <h2>Events</h2>
+        <ul id="events"></ul>
+      </aside>
+    </div>
+
+    <section class="compare card">
+      <h2>Compare two phrases</h2>
+      <p class="hint">Two tanks, same steps, different brine.</p>
+      <div class="row">
+        <input id="phrase-a" type="text" value="neon rain">
+        <input id="phrase-b" type="text" value="static bloom">
+        <label>Steps <input id="compare-steps" type="number" min="8" max="200" value="48"></label>
+        <button type="button" id="btn-compare">Run compare</button>
+      </div>
+      <div class="dual">
+        <div>
+          <p class="tank-label" id="label-a">neon rain</p>
+          <canvas id="tank-a" width="520" height="280" aria-label="Compare tank A"></canvas>
+        </div>
+        <div>
+          <p class="tank-label" id="label-b">static bloom</p>
+          <canvas id="tank-b" width="520" height="280" aria-label="Compare tank B"></canvas>
+        </div>
+      </div>
+      <pre id="compare-out"></pre>
+    </section>
 
     <script src="./engine.js"></script>
+    <script src="./tank.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

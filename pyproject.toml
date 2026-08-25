@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mnemoquarium"
-version = "0.4.0"
-description = "A deterministic memory aquarium where phrases grow into tiny artificial ecosystems."
+version = "0.6.0"
+description = "A deterministic memory aquarium where phrases grow into fish, sand, and coral."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }

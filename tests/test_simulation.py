@@ -5,7 +5,14 @@ from unittest.mock import patch
 
 from mnemoquarium.cli import main
 from mnemoquarium.compare import compare_worlds
-from mnemoquarium.export import field_report, html_document, json_document, svg_document
+from mnemoquarium.export import (
+    FISH_KINDS,
+    field_report,
+    fish_kind,
+    html_document,
+    json_document,
+    svg_document,
+)
 from mnemoquarium.model import World, make_species, words_from_phrase
 from mnemoquarium.render import render_ansi, sparkline
 from mnemoquarium.snapshot import HistoryRecorder, detailed_snapshot, load_snapshot
@@ -137,6 +144,23 @@ class MnemoquariumTests(unittest.TestCase):
 
     def test_sparkline_renders_blocks(self):
         self.assertEqual(len(sparkline([1, 2, 3, 9])), 4)
+
+    def test_svg_is_side_view_tank(self):
+        world = World.from_phrase("library dust with electric teeth", width=20, height=10).run(8)
+        svg = svg_document(world)
+        self.assertIn("Mnemoquarium specimen", svg)
+        self.assertIn("tank-sand", svg)
+        self.assertIn("tank-glass", svg)
+        self.assertIn("fish-body", svg)
+        self.assertIn("url(#water)", svg)
+        self.assertEqual(svg, svg_document(world))
+
+    def test_fish_kind_is_stable_and_known(self):
+        species = make_species("neon rain static bloom", max_species=6)
+        for sp in species:
+            kind = fish_kind(sp)
+            self.assertIn(kind, FISH_KINDS)
+            self.assertEqual(kind, fish_kind(sp))
 
     def test_overcrowded_cells_show_counts(self):
         world = World.from_phrase("crowd", width=16, height=10, population=1)
