@@ -97,6 +97,70 @@ class Species:
         }
 
 
+@dataclass(frozen=True)
+class Traits:
+    """What a genome adds on top of its species' baseline.
+
+    The eight low bits of a genome are the expressed region. A point mutation
+    flips exactly one of them, so a mutant's descendants inherit a visibly
+    different appetite, curiosity, thrift, or hue until the lineage mutates again.
+
+    Every advantage costs something, so selection has tension instead of a
+    single winning genome: a bigger appetite burns an extra point of energy per
+    tick, and thrift (immunity to crowding) delays breeding.
+    """
+
+    appetite: int
+    curiosity: int
+    thrift: bool
+    hue_shift: int
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "appetite": self.appetite,
+            "curiosity": self.curiosity,
+            "thrift": self.thrift,
+            "hue_shift": self.hue_shift,
+        }
+
+    def label(self) -> str:
+        parts: list[str] = []
+        if self.appetite:
+            parts.append(f"appetite {self.appetite:+d}")
+        if self.curiosity:
+            parts.append(f"curiosity {self.curiosity:+d}")
+        if self.thrift:
+            parts.append("thrifty")
+        if self.hue_shift:
+            parts.append(f"hue {self.hue_shift:+d}")
+        return ", ".join(parts) or "baseline"
+
+
+def genome_traits(genome: int) -> Traits:
+    g = int(genome)
+    return Traits(
+        appetite=((g & 3) % 3) - 1,
+        curiosity=(((g >> 2) & 3) % 3) - 1,
+        thrift=bool((g >> 4) & 1),
+        hue_shift=((g >> 5) & 7) * 6 - 21,
+    )
+
+
+EXPRESSED_MASK = 0xFF
+THRIFT_BREEDING_DELAY = 6
+
+
+def inherit_genome(identity: int, parent_genome: int) -> int:
+    """A child keeps its parent's expressed bits and gets a fresh identity above them."""
+    return (int(identity) & ~EXPRESSED_MASK) | (int(parent_genome) & EXPRESSED_MASK)
+
+
+def point_mutation(genome: int) -> int:
+    """Flip one expressed bit, chosen by the genome's own upper bits."""
+    g = int(genome)
+    return g ^ (1 << ((g >> 20) % 8))
+
+
 @dataclass
 class Organism:
     species_index: int
@@ -105,8 +169,16 @@ class Organism:
     energy: int
     age: int
     genome: int
+    generation: int = 0
+    parent: int = 0
+    born: int = 0
+    lineage_mutations: int = 0
 
-    def as_tuple(self) -> tuple[int, int, int, int, int, int]:
+    @property
+    def traits(self) -> Traits:
+        return genome_traits(self.genome)
+
+    def as_tuple(self) -> tuple[int, int, int, int, int, int, int, int, int, int]:
         return (
             self.species_index,
             self.x,
@@ -114,7 +186,26 @@ class Organism:
             self.energy,
             self.age,
             self.genome,
+            self.generation,
+            self.parent,
+            self.born,
+            self.lineage_mutations,
         )
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "species_index": self.species_index,
+            "x": self.x,
+            "y": self.y,
+            "energy": self.energy,
+            "age": self.age,
+            "genome": self.genome,
+            "generation": self.generation,
+            "parent": self.parent,
+            "born": self.born,
+            "lineage_mutations": self.lineage_mutations,
+            "traits": self.traits.as_dict(),
+        }
 
 
 @dataclass
@@ -208,11 +299,14 @@ class World:
             organism.y = (organism.y + dy) % self.height
             organism.age += 1
 
+            traits = organism.traits
             crowd = occupancy.get((organism.x, organism.y), 0)
-            tax = sp.metabolism + (1 if crowd > 2 else 0)
+            crowd_tax = 0 if traits.thrift else (1 if crowd > 2 else 0)
+            tax = sp.metabolism + crowd_tax + max(0, traits.appetite)
             organism.energy -= tax
 
-            meal = min(self.nutrients[organism.y][organism.x], sp.appetite)
+            appetite = max(1, sp.appetite + traits.appetite)
+            meal = min(self.nutrients[organism.y][organism.x], appetite)
             self.nutrients[organism.y][organism.x] -= meal
             organism.energy += meal * 3
 
@@ -230,20 +324,25 @@ class World:
                 if len(self.events) < 4:
                     self.events.append(f"{sp.name} absorbed a quieter neighbour")
 
-            if organism.energy >= sp.split_threshold and rng.random() < 0.42:
+            split_threshold = sp.split_threshold + (THRIFT_BREEDING_DELAY if traits.thrift else 0)
+            if organism.energy >= split_threshold and rng.random() < 0.42:
                 child_energy = max(6, organism.energy // 2)
                 organism.energy -= child_energy
                 child_dx, child_dy = rng.choice(DIRECTIONS)
                 child_index = organism.species_index
-                child_genome = stable_int(
-                    self.seed,
-                    "child",
-                    self.tick_count,
+                child_genome = inherit_genome(
+                    stable_int(
+                        self.seed,
+                        "child",
+                        self.tick_count,
+                        organism.genome,
+                        len(newborns),
+                    ),
                     organism.genome,
-                    len(newborns),
                 )
-                if rng.random() < 0.12:
-                    child_genome ^= 0xA5A5
+                mutated = rng.random() < 0.12
+                if mutated:
+                    child_genome = point_mutation(child_genome)
                     self.mutations += 1
                     if rng.random() < 0.25 and len(self.species) > 1:
                         child_index = (child_index + 1) % len(self.species)
@@ -256,6 +355,10 @@ class World:
                     energy=child_energy,
                     age=0,
                     genome=child_genome,
+                    generation=organism.generation + 1,
+                    parent=organism.genome,
+                    born=self.tick_count,
+                    lineage_mutations=organism.lineage_mutations + (1 if mutated else 0),
                 )
                 newborns.append(child)
                 if len(self.events) < 4:
@@ -319,6 +422,9 @@ class World:
     ) -> tuple[int, int]:
         best_score = float("-inf")
         best_direction = (0, 0)
+        traits = organism.traits
+        appetite = max(1, sp.appetite + traits.appetite)
+        curiosity = max(0, sp.curiosity + traits.curiosity)
         for dx, dy in [(0, 0), *DIRECTIONS]:
             tx = (organism.x + dx) % self.width
             ty = (organism.y + dy) % self.height
@@ -335,8 +441,8 @@ class World:
             jitter = (pulse % 100) / 100
             stubborn_pull = 1 if (tx * 3 + ty * 5 + sp.seed) % sp.stubbornness == 0 else 0
             score = (
-                nutrient * sp.appetite
-                + jitter * sp.curiosity
+                nutrient * appetite
+                + jitter * curiosity
                 + stubborn_pull
                 - crowd * 2.75
             )
@@ -399,7 +505,8 @@ class World:
     ) -> Organism | None:
         if occupancy.get((organism.x, organism.y), 0) < 1:
             return None
-        if sp.appetite + sp.stubbornness < 9:
+        appetite = max(1, sp.appetite + organism.traits.appetite)
+        if appetite + sp.stubbornness < 9:
             return None
         if rng.random() > 0.35:
             return None
@@ -409,7 +516,8 @@ class World:
             if other.x != organism.x or other.y != organism.y:
                 continue
             other_sp = self.species[other.species_index]
-            if other_sp.appetite >= sp.appetite:
+            other_appetite = max(1, other_sp.appetite + other.traits.appetite)
+            if other_appetite >= appetite:
                 continue
             if other.energy >= organism.energy:
                 continue
@@ -431,6 +539,7 @@ class World:
 
     def census(self) -> dict[str, object]:
         populations = self.population_by_species()
+        genealogy = self.genealogy()
         return {
             "tick": self.tick_count,
             "season": self.season(),
@@ -438,15 +547,65 @@ class World:
             "mutations": self.mutations,
             "predations": self.predations,
             "extinctions": list(self.extinctions),
+            "max_generation": genealogy["max_generation"],
+            "mean_generation": genealogy["mean_generation"],
+            "mutant_population": genealogy["mutant_population"],
             "species": [
                 {
                     "name": sp.name,
                     "glyph": sp.glyph,
                     "population": populations.get(index, 0),
+                    "max_generation": genealogy["species"][index]["max_generation"],
+                    "mutants": genealogy["species"][index]["mutants"],
                 }
                 for index, sp in enumerate(self.species)
             ],
         }
+
+    def genealogy(self) -> dict[str, object]:
+        """Who descends from whom: generation depth and inherited mutations."""
+        per_species: list[dict[str, object]] = []
+        for index, sp in enumerate(self.species):
+            members = [org for org in self.organisms if org.species_index == index]
+            generations = [org.generation for org in members]
+            mutants = sum(1 for org in members if org.lineage_mutations > 0)
+            founders = sum(1 for org in members if org.generation == 0)
+            per_species.append(
+                {
+                    "name": sp.name,
+                    "population": len(members),
+                    "max_generation": max(generations, default=0),
+                    "mean_generation": (
+                        round(sum(generations) / len(generations), 2) if generations else 0.0
+                    ),
+                    "founders_alive": founders,
+                    "mutants": mutants,
+                    "trait_variants": len({org.genome & EXPRESSED_MASK for org in members}),
+                }
+            )
+        generations = [org.generation for org in self.organisms]
+        return {
+            "tick": self.tick_count,
+            "population": len(self.organisms),
+            "max_generation": max(generations, default=0),
+            "mean_generation": (
+                round(sum(generations) / len(generations), 2) if generations else 0.0
+            ),
+            "mutant_population": sum(1 for org in self.organisms if org.lineage_mutations > 0),
+            "species": per_species,
+        }
+
+    def lineage_of(self, genome: int) -> list[Organism]:
+        """Walk parent links through the living population (nearest first)."""
+        by_genome = {org.genome: org for org in self.organisms}
+        chain: list[Organism] = []
+        current = by_genome.get(int(genome))
+        seen: set[int] = set()
+        while current is not None and current.genome not in seen:
+            chain.append(current)
+            seen.add(current.genome)
+            current = by_genome.get(current.parent) if current.parent else None
+        return chain
 
     def _compost(self, x: int, y: int, *, amount: int) -> None:
         for dx, dy in [(0, 0), *DIRECTIONS[:4]]:
@@ -482,6 +641,7 @@ class World:
                     energy=max(10, sp.split_threshold // 2),
                     age=0,
                     genome=stable_int(self.seed, "rescue-genome", self.tick_count, index),
+                    born=self.tick_count,
                 )
             )
         self.events.append("the archive reseeded itself from a cold backup")

@@ -2,6 +2,36 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [0.8.0] - 2026-09-02
+
+### Added
+- **Heredity.** The eight low bits of every genome are an expressed region
+  that children inherit from their parent. A point mutation flips exactly one
+  bit, so a mutant's descendants carry a visibly different appetite,
+  curiosity, thrift, or hue until the line mutates again. Every advantage
+  has a cost (bigger appetite burns energy, thrift delays breeding), so
+  selection has tension instead of one winning genome.
+- Organisms record `generation`, `parent`, `born`, and `lineage_mutations`;
+  `World.genealogy()` and `World.lineage_of()` summarise who descends from
+  whom. Census, snapshots, history CSV, and the Markdown field report all
+  include generation depth and mutant counts, and snapshots now round-trip
+  the mutation/predation/extinction counters.
+- `--lineage PATH` writes a JSON genealogy with every living organism's
+  ancestry pointers and expressed traits.
+- Browser lab: a **census strip** (stacked population history by species,
+  with nutrient shading and weather markers; key C), a **tick-stamped log**,
+  a **lineage inspector** (generation, inherited mutations, living
+  ancestors, trait chips), and a **shelf** of saved tanks in localStorage.
+- Mutant fish shimmer with an iridescent sheen; hue and girth express the
+  inherited traits so siblings look alike.
+- Installable offline: web manifest, service worker, and an SVG icon.
+- Browser engine test suite (`node --test web/tests`) and a CI job for it.
+
+### Changed
+- Version bumped to 0.8.0. `mnemoquarium` exports `Traits` and
+  `genome_traits`. Population dynamics are a little leaner than 0.7 because
+  traits now trade off against each other.
+
 ## [0.7.0] - 2026-08-25
 
 ### Changed

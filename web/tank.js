@@ -72,18 +72,25 @@
     return KINDS[sp.seed % KINDS.length];
   }
 
-  function morph(sp, genome) {
+  function morph(sp, genome, org) {
     const kind = fishKind(sp);
     const g = genome >>> 0;
+    const traits = typeof genomeTraits === "function" ? genomeTraits(g) : { appetite: 0, curiosity: 0, thrift: false, hue_shift: 0 };
+    const hue = (sp.hue + traits.hue_shift + 360) % 360;
+    const lineage = org && org.lineage_mutations ? org.lineage_mutations : 0;
     return {
       kind,
-      hue: sp.hue,
-      belly: (sp.hue + 28 + (g % 18)) % 360,
-      pattern: (g >>> 5) % 3,
+      hue,
+      belly: (hue + 28 + (g % 18)) % 360,
+      // Pattern comes from the inherited region, so siblings look alike.
+      pattern: (g & 0xff) % 3,
       stripeCount: 3 + ((g >>> 9) % 5),
-      spotCount: 4 + ((g >>> 11) % 7),
+      spotCount: 4 + ((g >>> 11) % 7) + Math.min(4, lineage),
       tailFan: 0.55 + ((g >>> 13) % 40) / 100,
-      speed: 0.55 + sp.curiosity * 0.12,
+      speed: 0.55 + Math.max(0, sp.curiosity + traits.curiosity) * 0.12,
+      girth: 1 + traits.appetite * 0.08,
+      sheen: Math.min(1, lineage * 0.35),
+      traits,
       bottom: kind === "catfish" || kind === "eel",
     };
   }
@@ -315,7 +322,7 @@
             facing: 1,
             angle: 0,
             phase: (org.genome % 1000) / 159.1,
-            morph: morph(sp, org.genome),
+            morph: morph(sp, org.genome, org),
             vx: 0,
             vy: 0,
             dart: 0,
@@ -952,6 +959,7 @@
       if (m.kind === "guppy") { L *= 0.88; H = L * 0.46; }
       if (m.kind === "tetra") { L *= 0.95; H = L * 0.33; }
       if (m.kind === "catfish") { L *= 1.05; H = L * 0.28; }
+      H *= m.girth || 1;
       const mot = this._m();
       const tail = Math.sin(now * 0.0036 * m.speed + vis.phase) * (0.14 + 0.22 * mot);
       const bob = Math.sin(now * 0.0011 * m.speed + vis.phase) * 1.6 * mot;
@@ -1003,6 +1011,18 @@
       ctx.lineWidth = 0.8;
       ctx.stroke();
 
+      if (m.sheen > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.16 + 0.18 * m.sheen * (0.5 + 0.5 * Math.sin(now * 0.0021 + vis.phase));
+        const sheen = ctx.createLinearGradient(-L * 0.4, -H, L * 0.5, H);
+        sheen.addColorStop(0, hsl((m.hue + 140) % 360, 90, 70));
+        sheen.addColorStop(0.5, hsl((m.hue + 200) % 360, 90, 78));
+        sheen.addColorStop(1, hsl((m.hue + 260) % 360, 90, 70));
+        ctx.fillStyle = sheen;
+        this._fishBody(ctx, m, L, H, tail);
+        ctx.fill();
+        ctx.restore();
+      }
       this._fins(ctx, m, L, H, tail, now);
       this._eye(ctx, m, L, H);
       if (m.kind === "catfish") this._barbels(ctx, L, H);

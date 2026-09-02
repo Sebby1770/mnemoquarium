@@ -4,18 +4,23 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Mnemoquarium — living memory tank</title>
-    <meta name="description" content="A living side-view aquarium: day and night, reef and kelp themes, schooling fish, and phrase-fed brine.">
+    <meta name="description" content="A living side-view aquarium: day and night, reef and kelp themes, schooling fish, heritable mutations, and phrase-fed brine.">
+    <meta name="theme-color" content="#16100c">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="./icon.svg">
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body class="room" data-phase="day" data-theme="reef">
     <header class="mast">
       <div>
-        <p class="eyebrow">living tank · v0.7 · slow cinema</p>
+        <p class="eyebrow">living tank · v0.8 · heredity</p>
         <h1>Mnemoquarium</h1>
-        <p class="lede">You are looking through the glass. Each word in the phrase becomes a species of fish. The room above the tank keeps time; sand, coral, and brine remember the seed.</p>
+        <p class="lede">You are looking through the glass. Each word in the phrase becomes a species of fish. Children inherit their parents' expressed traits; a point mutation flips one, and the lineage carries it. The room above the tank keeps time; sand, coral, and brine remember the seed.</p>
       </div>
       <nav>
         <a href="https://github.com/Sebby1770/mnemoquarium">GitHub</a>
+        <button class="ghost" id="btn-shelve" type="button">Save to shelf</button>
         <button class="ghost" id="btn-share" type="button">Copy share link</button>
       </nav>
     </header>
@@ -60,7 +65,15 @@
           <button type="button" id="btn-photo">Save photo</button>
           <button type="button" id="btn-sound" aria-pressed="false">Sound</button>
           <button type="button" id="btn-full">Fullscreen tank</button>
-          <p class="hint">Click a fish to inspect. Keys: F feed · T tap · L lights · Space pause · S photo. Sound starts only when you turn it on.</p>
+          <p class="hint">Click a fish to inspect. Keys: F feed · T tap · L lights · Space pause · S photo · C census. Sound starts only when you turn it on.</p>
+        </div>
+
+        <div class="census" id="census">
+          <div class="census-head">
+            <span>Census strip · population by species, last <span id="census-span">240</span> ticks</span>
+            <span id="census-note">gen 0 · 0 mutants</span>
+          </div>
+          <canvas id="census-strip" width="1100" height="120" aria-label="Population history by species"></canvas>
         </div>
       </div>
 
@@ -68,10 +81,16 @@
         <div class="kpis" id="kpis"></div>
         <h2>Species</h2>
         <div id="legend"></div>
-        <h2>Events</h2>
-        <ul id="events"></ul>
+        <h2>Log</h2>
+        <ul id="events" class="log"></ul>
       </aside>
     </div>
+
+    <section class="shelf card">
+      <h2>Shelf</h2>
+      <p class="hint">Tanks you have saved in this browser. Nothing leaves your machine.</p>
+      <div id="shelf" class="shelf-list"></div>
+    </section>
 
     <section class="compare card">
       <h2>Compare two phrases</h2>
@@ -98,5 +117,12 @@
     <script src="./engine.js"></script>
     <script src="./tank.js"></script>
     <script src="./app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>

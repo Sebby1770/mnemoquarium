@@ -89,6 +89,41 @@ function makeSpecies(phrase, maxSpecies = 8) {
   });
 }
 
+// Heredity. The eight low bits of a genome are the expressed region: a child
+// inherits them from its parent, and a point mutation flips exactly one, so a
+// mutant's descendants carry a visibly different appetite, curiosity, thrift,
+// or hue until the lineage mutates again. Mirrors src/mnemoquarium/model.py.
+const EXPRESSED_MASK = 0xff;
+const THRIFT_BREEDING_DELAY = 6;
+
+function genomeTraits(genome) {
+  const g = Number(genome) >>> 0;
+  return {
+    appetite: ((g & 3) % 3) - 1,
+    curiosity: (((g >>> 2) & 3) % 3) - 1,
+    thrift: ((g >>> 4) & 1) === 1,
+    hue_shift: ((g >>> 5) & 7) * 6 - 21,
+  };
+}
+
+function traitsLabel(traits) {
+  const parts = [];
+  if (traits.appetite) parts.push(`appetite ${traits.appetite > 0 ? "+" : ""}${traits.appetite}`);
+  if (traits.curiosity) parts.push(`curiosity ${traits.curiosity > 0 ? "+" : ""}${traits.curiosity}`);
+  if (traits.thrift) parts.push("thrifty");
+  if (traits.hue_shift) parts.push(`hue ${traits.hue_shift > 0 ? "+" : ""}${traits.hue_shift}`);
+  return parts.join(", ") || "baseline";
+}
+
+function inheritGenome(identity, parentGenome) {
+  return (((Number(identity) >>> 0) & ~EXPRESSED_MASK) | ((Number(parentGenome) >>> 0) & EXPRESSED_MASK)) >>> 0;
+}
+
+function pointMutation(genome) {
+  const g = Number(genome) >>> 0;
+  return (g ^ (1 << ((g >>> 20) % 8))) >>> 0;
+}
+
 function initialNutrient(seed, x, y, rng) {
   const vein = fnv([seed, "vein", Math.floor(x / 3), Math.floor(y / 2)]) % 10;
   const dust = rng.randrange(4);
@@ -124,6 +159,10 @@ class World {
         energy: 12 + rng.randrange(Math.max(1, Math.floor(sp.split_threshold / 2))),
         age: rng.randrange(5),
         genome: fnv([seed, "genome", i, sp.source_word]),
+        generation: 0,
+        parent: 0,
+        born: 0,
+        lineage_mutations: 0,
       });
     }
     return new World({ width, height, phrase: clean, seed, species, nutrients, organisms });
@@ -151,6 +190,7 @@ class World {
 
   census() {
     const pops = this.populationBySpecies();
+    const genealogy = this.genealogy();
     return {
       tick: this.tick_count,
       season: this.season(),
@@ -159,6 +199,9 @@ class World {
       predations: this.predations,
       extinctions: [...this.extinctions],
       nutrient_total: this.nutrients.flat().reduce((a, b) => a + b, 0),
+      max_generation: genealogy.max_generation,
+      mean_generation: genealogy.mean_generation,
+      mutant_population: genealogy.mutant_population,
       species: this.species.map((sp, i) => ({
         name: sp.name,
         glyph: sp.glyph,
@@ -169,8 +212,55 @@ class World {
         stubbornness: sp.stubbornness,
         seed: sp.seed,
         source_word: sp.source_word,
+        max_generation: genealogy.species[i].max_generation,
+        mutants: genealogy.species[i].mutants,
+        trait_variants: genealogy.species[i].trait_variants,
       })),
     };
+  }
+
+  genealogy() {
+    const perSpecies = this.species.map((sp, index) => {
+      const members = this.organisms.filter((org) => org.species_index === index);
+      const generations = members.map((org) => org.generation || 0);
+      const maxGen = generations.length ? Math.max(...generations) : 0;
+      const meanGen = generations.length
+        ? Math.round((generations.reduce((a, b) => a + b, 0) / generations.length) * 100) / 100
+        : 0;
+      return {
+        name: sp.name,
+        population: members.length,
+        max_generation: maxGen,
+        mean_generation: meanGen,
+        founders_alive: members.filter((org) => !org.generation).length,
+        mutants: members.filter((org) => (org.lineage_mutations || 0) > 0).length,
+        trait_variants: new Set(members.map((org) => (org.genome >>> 0) & EXPRESSED_MASK)).size,
+      };
+    });
+    const generations = this.organisms.map((org) => org.generation || 0);
+    return {
+      tick: this.tick_count,
+      population: this.organisms.length,
+      max_generation: generations.length ? Math.max(...generations) : 0,
+      mean_generation: generations.length
+        ? Math.round((generations.reduce((a, b) => a + b, 0) / generations.length) * 100) / 100
+        : 0,
+      mutant_population: this.organisms.filter((org) => (org.lineage_mutations || 0) > 0).length,
+      species: perSpecies,
+    };
+  }
+
+  lineageOf(genome) {
+    const byGenome = new Map(this.organisms.map((org) => [org.genome, org]));
+    const chain = [];
+    const seen = new Set();
+    let current = byGenome.get(Number(genome));
+    while (current && !seen.has(current.genome)) {
+      chain.push(current);
+      seen.add(current.genome);
+      current = current.parent ? byGenome.get(current.parent) : null;
+    }
+    return chain;
   }
 
   occupancy() {
@@ -212,9 +302,12 @@ class World {
       organism.y = (organism.y + dy + this.height) % this.height;
       organism.age += 1;
 
+      const traits = genomeTraits(organism.genome);
       const crowd = occupancy.get(`${organism.x},${organism.y}`) || 0;
-      organism.energy -= sp.metabolism + (crowd > 2 ? 1 : 0);
-      const meal = Math.min(this.nutrients[organism.y][organism.x], sp.appetite);
+      const crowdTax = traits.thrift ? 0 : (crowd > 2 ? 1 : 0);
+      organism.energy -= sp.metabolism + crowdTax + Math.max(0, traits.appetite);
+      const appetite = Math.max(1, sp.appetite + traits.appetite);
+      const meal = Math.min(this.nutrients[organism.y][organism.x], appetite);
       this.nutrients[organism.y][organism.x] -= meal;
       organism.energy += meal * 3;
 
@@ -232,14 +325,19 @@ class World {
         if (this.events.length < 4) this.events.push(`${sp.name} absorbed a quieter neighbour`);
       }
 
-      if (organism.energy >= sp.split_threshold && rng.random() < 0.42) {
+      const splitThreshold = sp.split_threshold + (traits.thrift ? THRIFT_BREEDING_DELAY : 0);
+      if (organism.energy >= splitThreshold && rng.random() < 0.42) {
         const childEnergy = Math.max(6, Math.floor(organism.energy / 2));
         organism.energy -= childEnergy;
         const [cdx, cdy] = rng.choice(DIRECTIONS);
         let childIndex = organism.species_index;
-        let childGenome = fnv([this.seed, "child", this.tick_count, organism.genome, newborns.length]);
-        if (rng.random() < 0.12) {
-          childGenome ^= 0xa5a5;
+        let childGenome = inheritGenome(
+          fnv([this.seed, "child", this.tick_count, organism.genome, newborns.length]),
+          organism.genome,
+        );
+        const mutated = rng.random() < 0.12;
+        if (mutated) {
+          childGenome = pointMutation(childGenome);
           this.mutations += 1;
           if (rng.random() < 0.25 && this.species.length > 1) {
             childIndex = (childIndex + 1) % this.species.length;
@@ -253,6 +351,10 @@ class World {
           energy: childEnergy,
           age: 0,
           genome: childGenome,
+          generation: (organism.generation || 0) + 1,
+          parent: organism.genome,
+          born: this.tick_count,
+          lineage_mutations: (organism.lineage_mutations || 0) + (mutated ? 1 : 0),
         });
         if (this.events.length < 4) this.events.push(`${sp.name} split in the memory brine`);
       }
@@ -271,6 +373,9 @@ class World {
   chooseDirection(organism, sp, occupancy) {
     let best = -Infinity;
     let pick = [0, 0];
+    const traits = genomeTraits(organism.genome);
+    const appetite = Math.max(1, sp.appetite + traits.appetite);
+    const curiosity = Math.max(0, sp.curiosity + traits.curiosity);
     for (const [dx, dy] of [[0, 0], ...DIRECTIONS]) {
       const tx = (organism.x + dx + this.width) % this.width;
       const ty = (organism.y + dy + this.height) % this.height;
@@ -279,7 +384,7 @@ class World {
       const pulse = fnv([this.seed, this.tick_count, organism.genome, dx, dy]);
       const jitter = (pulse % 100) / 100;
       const stubborn = ((tx * 3 + ty * 5 + sp.seed) % sp.stubbornness === 0) ? 1 : 0;
-      const score = nutrient * sp.appetite + jitter * sp.curiosity + stubborn - crowd * 2.75;
+      const score = nutrient * appetite + jitter * curiosity + stubborn - crowd * 2.75;
       if (score > best) {
         best = score;
         pick = [dx, dy];
@@ -341,13 +446,15 @@ class World {
 
   maybePrey(organism, sp, occupancy, rng) {
     if ((occupancy.get(`${organism.x},${organism.y}`) || 0) < 1) return null;
-    if (sp.appetite + sp.stubbornness < 9) return null;
+    const appetite = Math.max(1, sp.appetite + genomeTraits(organism.genome).appetite);
+    if (appetite + sp.stubbornness < 9) return null;
     if (rng.random() > 0.35) return null;
     for (const other of this.organisms) {
       if (other === organism || other.energy <= 0) continue;
       if (other.x !== organism.x || other.y !== organism.y) continue;
       const otherSp = this.species[other.species_index];
-      if (otherSp.appetite >= sp.appetite || other.energy >= organism.energy) continue;
+      const otherAppetite = Math.max(1, otherSp.appetite + genomeTraits(other.genome).appetite);
+      if (otherAppetite >= appetite || other.energy >= organism.energy) continue;
       return other;
     }
     return null;
@@ -385,6 +492,10 @@ class World {
         energy: Math.max(10, Math.floor(sp.split_threshold / 2)),
         age: 0,
         genome: fnv([this.seed, "rescue-genome", this.tick_count, index]),
+        generation: 0,
+        parent: 0,
+        born: this.tick_count,
+        lineage_mutations: 0,
       });
     });
     this.events.push("the archive reseeded itself from a cold backup");
@@ -395,10 +506,29 @@ function compareWorlds(a, b) {
   const ca = a.census();
   const cb = b.census();
   return [
-    `A "${a.phrase}"  pop ${ca.population}  season ${ca.season}  mut ${ca.mutations}`,
-    `B "${b.phrase}"  pop ${cb.population}  season ${cb.season}  mut ${cb.mutations}`,
+    `A "${a.phrase}"  pop ${ca.population}  season ${ca.season}  mut ${ca.mutations}  gen ${ca.max_generation}`,
+    `B "${b.phrase}"  pop ${cb.population}  season ${cb.season}  mut ${cb.mutations}  gen ${cb.max_generation}`,
     `Δ population ${cb.population - ca.population}`,
+    `Δ deepest generation ${cb.max_generation - ca.max_generation}`,
     `A extinctions: ${ca.extinctions.join(", ") || "none"}`,
     `B extinctions: ${cb.extinctions.join(", ") || "none"}`,
   ].join("\n");
+}
+
+// Node (tests) sees CommonJS; the browser reads the globals directly.
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = {
+    DEFAULT_PHRASE,
+    EXPRESSED_MASK,
+    Rng,
+    World,
+    compareWorlds,
+    fnv,
+    genomeTraits,
+    inheritGenome,
+    makeSpecies,
+    pointMutation,
+    traitsLabel,
+    wordsFromPhrase,
+  };
 }

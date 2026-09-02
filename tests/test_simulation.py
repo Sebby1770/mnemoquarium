@@ -175,5 +175,103 @@ class MnemoquariumTests(unittest.TestCase):
         self.assertIn("2", rendered)
 
 
+
+
+class HeredityTests(unittest.TestCase):
+    def test_traits_are_deterministic_and_bounded(self):
+        from mnemoquarium.model import genome_traits
+
+        for genome in (0, 1, 0xFF, 0xA5A5, 123456789, 2**63 - 1):
+            traits = genome_traits(genome)
+            self.assertEqual(traits, genome_traits(genome))
+            self.assertIn(traits.appetite, (-1, 0, 1))
+            self.assertIn(traits.curiosity, (-1, 0, 1))
+            self.assertIsInstance(traits.thrift, bool)
+            self.assertTrue(-21 <= traits.hue_shift <= 21)
+
+    def test_point_mutation_flips_exactly_one_expressed_bit(self):
+        from mnemoquarium.model import EXPRESSED_MASK, point_mutation
+
+        for genome in (0, 0xFFFF, 0x1234_5678, 987654321):
+            mutated = point_mutation(genome)
+            diff = genome ^ mutated
+            self.assertEqual(bin(diff).count("1"), 1)
+            self.assertEqual(diff & ~EXPRESSED_MASK, 0)
+
+    def test_children_inherit_expressed_bits(self):
+        from mnemoquarium.model import EXPRESSED_MASK, inherit_genome
+
+        child = inherit_genome(0xABCD_EF00, 0x1234_5642)
+        self.assertEqual(child & EXPRESSED_MASK, 0x42)
+        self.assertEqual(child & ~EXPRESSED_MASK, 0xABCD_EF00)
+
+    def test_offspring_carry_generation_and_parent_links(self):
+        world = World.from_phrase("heredity test", width=24, height=12, population=16).run(60)
+        children = [org for org in world.organisms if org.generation > 0]
+        self.assertTrue(children, "a 60-tick run should produce offspring")
+        for child in children:
+            self.assertGreater(child.born, 0)
+            self.assertNotEqual(child.parent, 0)
+        chain = world.lineage_of(children[0].genome)
+        self.assertEqual(chain[0].genome, children[0].genome)
+        for older, younger in zip(chain[1:], chain[:-1]):
+            self.assertEqual(younger.parent, older.genome)
+            self.assertEqual(older.generation + 1, younger.generation)
+
+    def test_genealogy_summary_matches_population(self):
+        world = World.from_phrase("family tree", width=24, height=12, population=12).run(40)
+        genealogy = world.genealogy()
+        self.assertEqual(genealogy["population"], len(world.organisms))
+        self.assertEqual(sum(entry["population"] for entry in genealogy["species"]), len(world.organisms))
+        self.assertGreaterEqual(genealogy["max_generation"], max(o.generation for o in world.organisms))
+        census = world.census()
+        self.assertEqual(census["max_generation"], genealogy["max_generation"])
+        self.assertIn("mutants", census["species"][0])
+
+    def test_snapshot_round_trip_keeps_heredity(self):
+        from mnemoquarium.snapshot import detailed_snapshot, load_snapshot
+
+        world = World.from_phrase("archive", width=20, height=10, population=10).run(30)
+        restored = load_snapshot(json.loads(json.dumps(detailed_snapshot(world))))
+        self.assertEqual(world.fossil_hash(), restored.fossil_hash())
+        self.assertEqual(world.mutations, restored.mutations)
+        self.assertEqual(world.predations, restored.predations)
+        self.assertEqual(world.extinctions, restored.extinctions)
+        self.assertEqual(
+            sorted(o.generation for o in world.organisms),
+            sorted(o.generation for o in restored.organisms),
+        )
+        restored.step()
+        world.step()
+        self.assertEqual(world.fossil_hash(), restored.fossil_hash())
+
+    def test_lineage_document_lists_every_organism(self):
+        from mnemoquarium.snapshot import lineage_document
+
+        world = World.from_phrase("lineage doc", width=20, height=10, population=8).run(25)
+        payload = json.loads(lineage_document(world))
+        self.assertEqual(len(payload["organisms"]), len(world.organisms))
+        self.assertIn("genealogy", payload)
+        self.assertTrue(all("traits" in org for org in payload["organisms"]))
+
+    def test_history_csv_includes_generation_columns(self):
+        from mnemoquarium.snapshot import HistoryRecorder
+
+        world = World.from_phrase("csv", width=16, height=8, population=6)
+        recorder = HistoryRecorder(interval=1)
+        recorder.maybe_record(world)
+        world.step()
+        recorder.maybe_record(world)
+        header, first, *_ = recorder.to_csv().splitlines()
+        self.assertTrue(header.endswith("max_generation,mutant_population"))
+        self.assertEqual(len(first.split(",")), 6)
+
+    def test_field_report_has_genealogy_section(self):
+        from mnemoquarium.export import field_report
+
+        world = World.from_phrase("report", width=16, height=8, population=6).run(12)
+        self.assertIn("## Genealogy", field_report(world))
+
+
 if __name__ == "__main__":
     unittest.main()
