@@ -1,6 +1,6 @@
 """Mnemoquarium: deterministic phrase-fed artificial life."""
 
-from .model import Organism, Species, World
+from .model import Organism, Species, Traits, World, genome_traits
 
-__all__ = ["Organism", "Species", "World"]
-__version__ = "0.7.0"
+__all__ = ["Organism", "Species", "Traits", "World", "genome_traits"]
+__version__ = "0.9.0"

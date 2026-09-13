@@ -10,7 +10,7 @@ from .compare import compare_worlds
 from .export import field_report, html_document, json_document, svg_document
 from .model import DEFAULT_PHRASE, World
 from .render import render_ansi, render_legend, sparkline
-from .snapshot import HistoryRecorder, read_snapshot_file
+from .snapshot import HistoryRecorder, lineage_document, read_snapshot_file
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -79,6 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Record history every N ticks.",
     )
     parser.add_argument("--export-html", type=Path, help="Write a standalone HTML gallery page.")
+    parser.add_argument(
+        "--lineage",
+        type=Path,
+        help="Write a JSON genealogy: generations, inherited mutations, and parent links.",
+    )
     parser.add_argument(
         "--compare",
         nargs=2,
@@ -252,6 +257,7 @@ def write_outputs(
         (args.report, field_report(world)),
         (args.record_history, history.to_json()),
         (args.history_csv, history.to_csv()),
+        (args.lineage, lineage_document(world)),
     ]
     errors: list[str] = []
     for path, content in outputs:

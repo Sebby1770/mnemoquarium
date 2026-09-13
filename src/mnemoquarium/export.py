@@ -56,6 +56,25 @@ def field_report(world: World) -> str:
         lines.append(
             f"| `{sp.glyph}` | {sp.name} | `{sp.source_word}` | {count} | {traits} |"
         )
+    genealogy = world.genealogy()
+    lines.extend(
+        [
+            "",
+            "## Genealogy",
+            "",
+            f"Deepest generation: `{genealogy['max_generation']}`",
+            f"Mean generation: `{genealogy['mean_generation']}`",
+            f"Carrying an inherited mutation: `{genealogy['mutant_population']}`",
+            "",
+            "| Species | Pop | Max gen | Founders alive | Mutants | Trait variants |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for entry in genealogy["species"]:
+        lines.append(
+            f"| {entry['name']} | {entry['population']} | {entry['max_generation']} | "
+            f"{entry['founders_alive']} | {entry['mutants']} | {entry['trait_variants']} |"
+        )
     if world.events:
         lines.extend(["", "## Last Events", ""])
         lines.extend(f"- {event}" for event in world.events)

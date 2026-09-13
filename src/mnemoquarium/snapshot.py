@@ -9,19 +9,10 @@ from .model import Organism, Species, World, make_species
 
 def detailed_snapshot(world: World) -> dict[str, Any]:
     base = world.snapshot()
-    base["organisms"] = [
-        {
-            "species_index": organism.species_index,
-            "x": organism.x,
-            "y": organism.y,
-            "energy": organism.energy,
-            "age": organism.age,
-            "genome": organism.genome,
-        }
-        for organism in world.organisms
-    ]
+    base["organisms"] = [organism.as_dict() for organism in world.organisms]
     base["nutrients"] = world.nutrients
     base["species_catalog"] = [sp.as_dict() for sp in world.species]
+    base["genealogy"] = world.genealogy()
     return base
 
 
@@ -65,6 +56,10 @@ def load_snapshot(data: dict[str, Any]) -> World:
             energy=int(item["energy"]),
             age=int(item["age"]),
             genome=int(item["genome"]),
+            generation=int(item.get("generation", 0)),
+            parent=int(item.get("parent", 0)),
+            born=int(item.get("born", 0)),
+            lineage_mutations=int(item.get("lineage_mutations", 0)),
         )
         for item in data.get("organisms", [])
     ]
@@ -79,7 +74,32 @@ def load_snapshot(data: dict[str, Any]) -> World:
         organisms=organisms,
         tick_count=tick,
         events=list(data.get("events", [])),
+        extinctions=[str(name) for name in data.get("extinctions", [])],
+        mutations=int(data.get("mutations", 0)),
+        predations=int(data.get("predations", 0)),
     )
+
+
+def lineage_document(world: World) -> str:
+    """JSON: genealogy summary plus every living organism's ancestry pointers."""
+    payload = {
+        "phrase": world.phrase,
+        "seed": world.seed,
+        "tick": world.tick_count,
+        "fossil_hash": world.fossil_hash(),
+        "genealogy": world.genealogy(),
+        "organisms": [
+            {
+                **organism.as_dict(),
+                "species": world.species[organism.species_index].name,
+                "ancestors_alive": len(world.lineage_of(organism.genome)) - 1,
+            }
+            for organism in sorted(
+                world.organisms, key=lambda org: (-org.generation, -org.lineage_mutations, org.genome)
+            )
+        ],
+    }
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
 def read_snapshot_file(path: Path) -> World:
@@ -102,6 +122,8 @@ class HistoryRecorder:
                 "population": len(world.organisms),
                 "nutrient_total": sum(sum(row) for row in world.nutrients),
                 "fossil_hash": world.fossil_hash(),
+                "max_generation": max((org.generation for org in world.organisms), default=0),
+                "mutant_population": sum(1 for org in world.organisms if org.lineage_mutations > 0),
                 "species_populations": {
                     world.species[index].name: populations.get(index, 0)
                     for index in range(len(world.species))
@@ -113,9 +135,11 @@ class HistoryRecorder:
         return json.dumps(self.entries, indent=2, sort_keys=True) + "\n"
 
     def to_csv(self) -> str:
-        lines = ["tick,population,nutrient_total,fossil_hash"]
+        lines = ["tick,population,nutrient_total,fossil_hash,max_generation,mutant_population"]
         for entry in self.entries:
             lines.append(
-                f"{entry['tick']},{entry['population']},{entry['nutrient_total']},{entry['fossil_hash']}"
+                f"{entry['tick']},{entry['population']},{entry['nutrient_total']},"
+                f"{entry['fossil_hash']},{entry.get('max_generation', 0)},"
+                f"{entry.get('mutant_population', 0)}"
             )
         return "\n".join(lines) + "\n"
