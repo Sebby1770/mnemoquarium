@@ -14,11 +14,12 @@
   <body class="room" data-phase="day" data-theme="reef">
     <header class="mast">
       <div>
-        <p class="eyebrow">living tank · v0.8 · heredity</p>
+        <p class="eyebrow">living tank · v0.9 · heredity</p>
         <h1>Mnemoquarium</h1>
         <p class="lede">You are looking through the glass. Each word in the phrase becomes a species of fish. Children inherit their parents' expressed traits; a point mutation flips one, and the lineage carries it. The room above the tank keeps time; sand, coral, and brine remember the seed.</p>
       </div>
       <nav>
+        <a class="dive-link" href="./deep/">Dive the deep &darr;</a>
         <a href="https://github.com/Sebby1770/mnemoquarium">GitHub</a>
         <button class="ghost" id="btn-shelve" type="button">Save to shelf</button>
         <button class="ghost" id="btn-share" type="button">Copy share link</button>
@@ -51,6 +52,13 @@
             <input id="speed" type="range" min="1" max="20" value="3">
           </label>
         </form>
+
+        <a class="dive-banner" href="./deep/">
+          <span class="dive-banner-kicker">new &middot; the deep</span>
+          <span class="dive-banner-title">Get in the water</span>
+          <span class="dive-banner-body">The same phrase, the same genetics &mdash; but you are inside a submarine, a kilometre down, and the fish are worth money. Net them, sell them at the Hull, refit, and find out what lives below your pressure rating.</span>
+          <span class="dive-banner-go">Flood the tanks &rarr;</span>
+        </a>
 
         <div class="bezel">
           <canvas id="tank" width="1100" height="620" aria-label="Side-view aquarium"></canvas>

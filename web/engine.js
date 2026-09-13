@@ -515,6 +515,25 @@ function compareWorlds(a, b) {
   ].join("\n");
 }
 
+// The deep-sea game loads this file as a classic script and reads the bundle
+// off globalThis, so its ES modules share one source of truth for the genetics.
+if (typeof globalThis !== "undefined") {
+  globalThis.MnemoEngine = {
+    DEFAULT_PHRASE,
+    EXPRESSED_MASK,
+    Rng,
+    World,
+    compareWorlds,
+    fnv,
+    genomeTraits,
+    inheritGenome,
+    makeSpecies,
+    pointMutation,
+    traitsLabel,
+    wordsFromPhrase,
+  };
+}
+
 // Node (tests) sees CommonJS; the browser reads the globals directly.
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {

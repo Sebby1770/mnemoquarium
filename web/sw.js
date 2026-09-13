@@ -1,5 +1,5 @@
 /* Mnemoquarium offline shell. Bump CACHE when the shell files change. */
-const CACHE = "mnemoquarium-v0.8.0";
+const CACHE = "mnemoquarium-v0.9.0";
 const SHELL = [
   "./",
   "./index.html",
@@ -31,6 +31,8 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+  // The deep-sea game ships its own worker and its own cache.
+  if (url.pathname.includes("/deep/")) return;
   event.respondWith(
     fetch(event.request)
       .then((response) => {

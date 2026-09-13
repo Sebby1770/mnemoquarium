@@ -4,15 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mnemoquarium"
-version = "0.8.0"
-description = "A deterministic memory aquarium where phrases grow into fish, sand, and coral."
+version = "0.9.0"
+description = "A deterministic memory aquarium where phrases grow into fish, sand, coral, and a sea you can dive."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
   { name = "Sebby1770" }
 ]
-keywords = ["artificial-life", "cli", "simulation", "generative", "terminal"]
+keywords = ["artificial-life", "cli", "simulation", "generative", "terminal", "game", "webgl"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",

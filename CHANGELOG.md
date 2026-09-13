@@ -2,6 +2,49 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [0.9.0] - 2026-09-13
+
+### Added
+- **The Deep** (`web/deep/`) — the aquarium turned inside out. You are in a
+  first-person submarine, in a sea grown from the same phrase, and the fish are
+  worth money. Net them with a capture beam, sell them at the Hull, refit, and
+  find out what lives below your pressure rating. No build step; three.js r160
+  is vendored, so it runs off a static file server and offline.
+- The genetics are not re-implemented for the game: `web/engine.js` now also
+  publishes itself on `globalThis.MnemoEngine`, and the game's `ecology.js`
+  grows every species through the same `makeSpecies` / `inheritGenome` /
+  `pointMutation` rules the 2D tank uses. A word of your phrase becomes a
+  species; its expressed traits become a body, a temper, and a price. A fish
+  that carries an inherited mutation sells for more than its siblings, which is
+  heredity finally showing up on an invoice.
+- **Five depth bands**, each with its own light, fog, flora, residents and
+  monsters: the Sunlit Shelf, the Kelp Cathedral, the Twilight Drift, the
+  Midnight Reach, and The Forgetting. The seabed is one deterministic
+  heightfield that slopes from 62 m under the station to 1,400 m at the rim, so
+  every band is reached by swimming, not by a menu.
+- **Twelve upgrades** in the drydock: hull plating, pressure casing, impeller,
+  cargo hold, cell array, floodlights, sonar array, capture beam, harpoon,
+  torpedo tubes, repair drone, trickle reactor. Pressure rating gates depth,
+  depth gates money, money buys rating.
+- **Six things that hunt you**: reef sharks, glass squid that clamp on and
+  drain the cell, lantern anglers that wait in the dark with a light on, a
+  segmented leviathan, a Forgetting Wraith that takes a specimen out of the
+  hold and out of the record, and the Kraken of Static in the abyss.
+- Three weapons (harpoon, torpedo, sonar lance), a sonar ping that paints
+  contacts on the HUD, a compass that always knows the bearing home, a rolling
+  log, a market, a manifest of the species you have actually caught, and a save
+  that survives the tab.
+- Tests for the parts that run without a GPU (`web/tests/deep.test.mjs`):
+  determinism, the water column never being empty, depth and mutation pricing,
+  the upgrade table, and a save file that degrades instead of throwing.
+- `web/tests/parse-modules.mjs` compiles every deep module eagerly in CI.
+  `node --check` pre-parses function bodies lazily and will pass a file the
+  browser then refuses with an unattributed `SyntaxError`; this catches it.
+
+### Changed
+- The 2D lab links out to the dive, and the dive links back. Nothing about the
+  tank's behaviour changed — same engine, same tests, same tank.
+
 ## [0.8.0] - 2026-09-02
 
 ### Added
