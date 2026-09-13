@@ -229,7 +229,20 @@ async function boot(seaPhrase, profile) {
     // three.js is 650 KB; it is not fetched until somebody actually dives.
     const { Game } = await import("./game.js");
     if (els.loadingBar) els.loadingBar.style.width = "62%";
-    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    /* One paint between the fetch and the build, so the bar is not a lie —
+       but a tab that is not on screen never paints, and waiting on a frame
+       that will not come leaves the game stuck on "flooding the tanks" until
+       somebody looks at it. Take whichever arrives first. */
+    await new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      requestAnimationFrame(finish);
+      setTimeout(finish, 150);
+    });
 
     const game = new Game(els.canvas, { phrase: seaPhrase, profile });
     window.__deep = game;

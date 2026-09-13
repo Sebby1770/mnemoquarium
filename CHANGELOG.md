@@ -2,6 +2,49 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.1.0] - 2026-09-13
+
+### Added
+- **Real underwater light.** Distance fog is a lie that reads as smoke; water
+  eats light one colour at a time. Every lit surface now runs per-channel
+  Beer-Lambert absorption with in-scattering, patched into three's shaders via
+  `onBeforeCompile` (no addons), so red dies within metres, blue carries, and
+  distance goes the colour of the water rather than the colour of fog.
+  In-scattered light also dies with the sunlight that causes it, which is what
+  stops a thousand metres down from looking like bright haze.
+- **Caustics** projected onto the seabed and anything else facing up, fading
+  out with the daylight by about 150 m.
+- **Silt**: the water thickens near the floor, where you stir it up.
+
+### Changed
+- **The world is a margin, not a bowl.** Depth used to be essentially a
+  function of distance from the Hull, so every heading was the same journey.
+  There is now a continental shelf on one side and a basin on the other, chosen
+  by the phrase: at 2 km out the floor ranges from about 200 m on the shelf
+  side to 1,300 m over the basin.
+- **Grown from 1.5 km to 4.2 km across**, with the depth bands mapping onto
+  real distance — the Sunlit Shelf starts a few hundred metres from the Hull
+  and The Forgetting is a two-and-a-half kilometre swim.
+- **A shelf break** you can navigate by: a genuine escarpment, over 200 m of
+  drop in 120 m of travel, wandering across the map rather than ringing it.
+- **Two trench arms** that meet, instead of one meander.
+- **Seamounts**: 9-13 isolated peaks, some rising 400 m off the basin floor and
+  breaking up out of the dark into the twilight, visible from a long way out.
+- Terrain is domain-warped, so ridgelines wander instead of reading as noise.
+- Terrain now streams: a 1.76 km detail tile at 10 m resolution follows the sub
+  over a coarse backdrop, rebuilt a couple of rows per frame (about 2.8 ms
+  while it runs, and it only runs for a second or so every twenty seconds of
+  travel). `heightAt` reads that tile, so what you collide with agrees with
+  what you can see to within 0.7 m — at the old grid it had drifted to 2 m.
+- The seabed is darker and shaded by slope, so sand, rock and silt read apart.
+- Nothing breaches the surface any more.
+
+### Fixed
+- The game could hang forever on "flooding the tanks" if it was opened in a
+  background tab: boot waited on `requestAnimationFrame`, which a tab that is
+  not painting never fires. It now takes whichever of the frame or a short
+  timeout arrives first.
+
 ## [1.0.0] - 2026-09-13
 
 ### Changed
