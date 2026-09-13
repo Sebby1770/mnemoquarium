@@ -11,10 +11,10 @@ const require = createRequire(import.meta.url);
 // does after index.html loads ../engine.js as a classic script.
 globalThis.MnemoEngine = require("../engine.js");
 
-const { Ecology } = await import("../deep/src/ecology.js");
-const progression = await import("../deep/src/progression.js");
-const save = await import("../deep/src/save.js");
-const { ZONES, UPGRADES, CREATURES, RARITY, zoneForDepth } = await import("../deep/src/config.js");
+const { Ecology } = await import("../src/ecology.js");
+const progression = await import("../src/progression.js");
+const save = await import("../src/save.js");
+const { ZONES, UPGRADES, CREATURES, RARITY, zoneForDepth } = await import("../src/config.js");
 
 const PHRASE = "forgotten kiosk under neon rain";
 
