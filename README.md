@@ -1,37 +1,124 @@
 # Mnemoquarium
 
-**Live lab:** [https://sebby1770.github.io/mnemoquarium/](https://sebby1770.github.io/mnemoquarium/)
-&nbsp;·&nbsp;
-**Dive it:** [the deep](https://sebby1770.github.io/mnemoquarium/deep/)
+**Play it:** [https://sebby1770.github.io/mnemoquarium/](https://sebby1770.github.io/mnemoquarium/)
 
-Deterministic phrase-fed artificial life. Type a phrase and look **through the glass** of a slow side-view aquarium: fish with scales and gills glide over sand and coral. Children inherit their parents' traits, mutations run in families, and a census strip records every bloom and crash. Day and night, reef / kelp / moonlit themes, schooling, and brine. Or run the Python CLI.
+A first-person submarine game in a sea grown from words. Every word becomes a
+species down there — its colour, its size, its temper, its price. Net what you
+find, sell it at the Hull, and buy a casing that can take you lower than the
+last one could.
 
-Mnemoquarium is a tiny artificial-life lab for the terminal and the browser.
+The same words always grow the same sea, so you can learn a trench the way you
+learn a room.
 
-See [CHANGELOG.md](CHANGELOG.md) for release history.
+![the deep](https://sebby1770.github.io/mnemoquarium/icon.svg)
 
-Give it any phrase and it deterministically turns the words into species, seeds a little
-nutrient field, and lets the resulting memory ecosystem crawl, bloom, split,
-starve, and leave behind a fossil hash.
+## Play
 
-There are two ways to look at the same ecosystem. Through the glass, in the
-2D tank, where you watch it run. Or from inside it, in **[the deep](web/deep/)**
-— a first-person submarine game where the fish your phrase grew are worth money,
-the dark is expensive, and something down there is hunting.
+Press **Dive**. That is the whole menu — it picks a sea for you and drops you
+in the water. If you want a particular one, *Grow a sea from your own words* at
+the bottom of the menu takes any phrase you like.
 
-It is deliberately odd, but useful as a compact Python project:
+| | |
+| --- | --- |
+| `W` `A` `S` `D` | thrust |
+| `Space` / `C` | rise / dive |
+| `Shift` | boost |
+| mouse | look (click once to lock) |
+| `LMB` | fire |
+| `RMB` | capture beam — hold it on a fish |
+| `1` `2` `3` | harpoon / torpedo / sonar lance |
+| `F` | floodlights |
+| `R` | sonar ping |
+| `E` | dock at the Hull |
+| `Tab` | look in the hold |
+| `Esc` | pause |
 
-- pure standard library, no runtime dependencies
-- deterministic simulations from phrase seeds
-- heritable genomes: children inherit expressed traits, point mutations run in lineages
-- genealogy reports (generation depth, founders alive, inherited mutations)
-- animated ANSI terminal rendering
-- side-view SVG tank export (sand, coral, fish)
-- JSON snapshot export
-- Markdown field report export
-- installable CLI plus a testable simulation core
+**The loop.** Dive from the Hull → hold the beam on a fish until it comes in →
+come back, sell the hold, refit → go deeper than you could last time.
 
-## Quick Start
+**Pressure is the gate.** The stock casing is rated to 140 m. Go much past it
+and the sea starts folding the boat shut — and everything worth real money
+lives below your rating. Buy the Pressure Casing first.
+
+**Your lamps are how they find you.** `F` kills them. Running dark is cheaper
+and much worse.
+
+### The water column
+
+The seabed slopes from 62 m under the station to 1,400 m at the rim, so every
+band is reached by swimming, not by a menu.
+
+| band | depth | what it costs you |
+| --- | --- | --- |
+| Sunlit Shelf | 0–90 m | nothing. it has also been picked over |
+| Kelp Cathedral | 90–240 m | green columns, and things that hold on |
+| Twilight Drift | 240–520 m | the last of the light, spending itself |
+| Midnight Reach | 520–980 m | no light but the light that wants you closer |
+| The Forgetting | 980 m+ | where the tank keeps what it could not hold |
+
+### What hunts you
+
+Reef sharks run straight at you. Glass squid clamp on and drain the cell.
+Lantern anglers hang still in the dark with a light on. A leviathan is longer
+than your lamps reach. A Forgetting Wraith takes a specimen out of your hold
+*and out of your record*. The Kraken of Static lives in the abyss and is not a
+fair fight yet.
+
+## Where the fish come from
+
+This is the part that makes it mnemoquarium and not just a submarine game.
+
+Each distinct word in a phrase becomes a species. The phrase hash chooses its
+traits — appetite, curiosity, stubbornness, lifespan, hue — and those traits
+become a body plan, a home depth, a temper, and a price.
+
+### Heredity
+
+Each genome carries an expressed region of eight bits. A child inherits those
+bits from its parent, and a point mutation flips exactly one of them, so the
+appetite, curiosity, thrift, or hue of a mutant is passed down its line.
+
+Down here that shows up on an invoice. A specimen carrying an inherited
+mutation is worth more than its siblings, because the market pays for something
+it has not seen before:
+
+| specimen | lineage | sells for |
+| --- | --- | --- |
+| glass-kiosk-listener | gen 1 | 11 cr |
+| glass-kiosk-listener | gen 2 · 1 inherited | 14 cr |
+| glass-kiosk-listener | gen 3 · 1 inherited | 15 cr |
+
+Value also scales with the depth you took it from, so the same fish is worth
+several times more if you carried it up from the dark.
+
+## How it is built
+
+No build step, no bundler, no runtime dependencies beyond a vendored copy of
+three.js r160. The modules are plain ES modules behind an importmap, and the
+whole thing installs offline. Serve the `web/` folder with any static server.
+
+```bash
+python3 -m http.server 8765 --directory web
+```
+
+- `web/engine.js` — the genetics: species, genomes, inheritance, mutation
+- `web/src/ecology.js` — phrase to species to price
+- `web/src/world.js` — seabed, depth bands, flora, the Hull
+- `web/src/sub.js` — flight, systems, pressure, the cockpit
+- `web/src/fish.js` — shoals, boids, the capture
+- `web/src/creatures.js` — the six, and their manners
+- `web/src/combat.js` — harpoon, torpedoes, sonar lance, the beam
+- `web/src/hud.js` — instruments, market, drydock, manifest
+- `web/ARCHITECTURE.md` — the contract every module is written against
+
+`web/engine.js` mirrors `src/mnemoquarium/model.py` rule for rule, so the
+terminal simulator below and the game grow fish by the same laws.
+
+## The terminal simulator
+
+The original mnemoquarium: a deterministic artificial-life lab for the
+terminal, pure standard library, no runtime dependencies. The game's genetics
+are a port of it.
 
 ```bash
 python3 -m venv .venv
@@ -46,6 +133,12 @@ Run without installation from the repository root:
 PYTHONPATH=src python3 -m mnemoquarium "library dust with electric teeth" --steps 64
 ```
 
+Each distinct word becomes a species that roams a wraparound nutrient field,
+eats, reproduces, starves, and occasionally gets hit by weather like
+remembering tides and static blooms. Because all randomness is seeded from the
+phrase, the same command always produces the same final fossil hash — a
+BLAKE2b digest of the whole simulation state.
+
 Export a specimen:
 
 ```bash
@@ -57,69 +150,12 @@ PYTHONPATH=src python3 -m mnemoquarium \
   --report out/field-report.md
 ```
 
-## What It Does
-
-Each distinct word in the phrase becomes a species (up to `--max-species`).
-The phrase hash chooses its traits: appetite, curiosity, stubbornness, split
-threshold, lifespan, glyph, and color. The organisms roam a wraparound nutrient
-field, make noisy local decisions, eat, reproduce, and occasionally get hit by
-weird weather events like remembering tides or static blooms.
-
-Because all randomness is seeded from the phrase, this command will always
-generate the same final fossil:
-
-```bash
-PYTHONPATH=src python3 -m mnemoquarium "same phrase, same aquarium" --steps 50
-```
-
-### Heredity
-
-Each genome carries an expressed region of eight bits. A child inherits those
-bits from its parent, and a point mutation flips exactly one of them, so the
-appetite, curiosity, thrift, or hue of a mutant is passed down its line. Every
-advantage costs something (a bigger appetite burns more energy; thrift, which
-shrugs off crowding, delays breeding), so no single genome wins forever.
-
-```bash
-PYTHONPATH=src python3 -m mnemoquarium "salt and static" --steps 120 --lineage out/lineage.json --census
-```
-
-The census and the Markdown field report show the deepest generation, the mean
-generation, and how many fish carry an inherited mutation, per species.
-
-### Fossil hash
-
-The fossil hash is a BLAKE2b digest of the full simulation state (organisms,
-nutrients, tick). Same phrase + dimensions + steps always yields the same
-hash — a compact fingerprint of the ecosystem's final memory.
-
-## CLI
-
-Compare two phrases side by side:
+Compare two phrases, or record a population time series:
 
 ```bash
 PYTHONPATH=src python3 -m mnemoquarium --compare "neon rain" "static bloom" --steps 64
-```
-
-Export a React Bits–styled HTML gallery page:
-
-```bash
-PYTHONPATH=src python3 -m mnemoquarium "library dust" --steps 48 --export-html out/gallery.html
-```
-
-Resume from a saved specimen:
-
-```bash
-PYTHONPATH=src python3 -m mnemoquarium --replay out/specimen.json --steps 40
-```
-
-Record a population time series while the habitat runs:
-
-```bash
 PYTHONPATH=src python3 -m mnemoquarium "library dust" --steps 96 \
-  --record-history out/history.json \
-  --history-csv out/history.csv \
-  --history-interval 4
+  --record-history out/history.json --history-csv out/history.csv
 ```
 
 ```text
@@ -132,72 +168,18 @@ usage: mnemoquarium [phrase ...] [--width N] [--height N] [--steps N]
                     [--seed N] [--compare PHRASE_A PHRASE_B]
 ```
 
-Long non-animated runs print progress to stderr every few ticks. Animation
-detects non-TTY output and skips screen clears when piped.
-
-## The Deep
-
-```
-web/deep/  ->  https://sebby1770.github.io/mnemoquarium/deep/
-```
-
-Same phrase. Same genetics. You are in a submarine now.
-
-Every word of your phrase is still a species — `makeSpecies` is imported from
-the same `web/engine.js` the 2D tank runs on, so a kiosk is the same fish in
-both — but down here each species also has a body plan, a home depth, a temper,
-and a price. Children still inherit their parents' expressed bits and still
-mutate one at a time, and a specimen carrying an inherited mutation sells for
-more than its siblings. That is the whole economy: heredity, on an invoice.
-
-**The loop.** Dive from the Hull. Hold the capture beam on a fish until it comes
-in. Come back, sell the hold, refit, and go deeper than you could last time.
-
-**Five bands**, and the seabed slopes into all of them — 62 m under the station,
-1,400 m at the rim, no menus, you just swim out:
-
-| band | depth | what it costs you |
-| --- | --- | --- |
-| Sunlit Shelf | 0–90 m | nothing. it has also been picked over |
-| Kelp Cathedral | 90–240 m | green columns, and things that hold on |
-| Twilight Drift | 240–520 m | the last of the light, spending itself |
-| Midnight Reach | 520–980 m | no light but the light that wants you closer |
-| The Forgetting | 980 m+ | where the tank keeps what it could not hold |
-
-**Pressure is the gate.** The stock casing is rated to 140 m. Past the rating
-the sea starts folding the boat shut, and the fish worth real money all live
-below it. Twelve upgrades in the drydock — casing, hull, impeller, hold, cell,
-lamps, sonar, beam, harpoon, torpedo tubes, repair drone, trickle reactor.
-
-**Six things hunt you.** Reef sharks run straight at you. Glass squid clamp on
-and drain the cell. Lantern anglers hang still in the dark with a light on.
-A leviathan is longer than your lamps reach. A Forgetting Wraith takes a
-specimen out of the hold *and out of the record*. The Kraken of Static lives in
-the abyss and is not a fair fight yet.
-
-Your lamps are how they find you. Running dark is cheaper and much worse.
-
-**Controls.** `W A S D` thrust · `Space` rise · `C` dive · `Shift` boost ·
-mouse look · `LMB` fire · `RMB` capture beam · `1` `2` `3` weapons · `F` lights ·
-`R` sonar · `E` dock · `Tab` hold · `Esc` pause.
-
-**No build step.** three.js r160 is vendored at `web/deep/vendor/`, the modules
-are plain ES modules, and the whole thing installs offline like the tank does.
-Serve the `web/` folder with any static server and open `/deep/`.
-
-- `web/deep/src/ecology.js` — phrase to species to price
-- `web/deep/src/world.js` — seabed, bands, flora, the Hull
-- `web/deep/src/sub.js` — flight, systems, pressure, the cockpit
-- `web/deep/src/fish.js` — shoals, boids, the capture
-- `web/deep/src/creatures.js` — the six, and their manners
-- `web/deep/ARCHITECTURE.md` — the contract every module is written against
+- `src/mnemoquarium/model.py` — simulation core
+- `src/mnemoquarium/render.py` — ANSI rendering
+- `src/mnemoquarium/export.py` — SVG tank, JSON, and Markdown exporters
+- `src/mnemoquarium/cli.py` — argument parsing and orchestration
+- `src/mnemoquarium/snapshot.py` — JSON snapshots, history, lineage export
 
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests   # simulation core
-node --test "web/tests/*.test.mjs"                     # browser engine + the deep
-node --experimental-vm-modules web/tests/parse-modules.mjs   # compile the deep modules
+PYTHONPATH=src python3 -m unittest discover -s tests            # simulation core
+node --test "web/tests/*.test.mjs"                              # engine + game logic
+node --experimental-vm-modules web/tests/parse-modules.mjs      # compile the game modules
 ```
 
 That last one exists because `node --check` pre-parses function bodies lazily:
@@ -205,28 +187,4 @@ a malformed literal inside a method passes the check and then fails in the
 browser as a bare `SyntaxError` with no file and no line. Compiling each module
 eagerly catches it and names the file.
 
-The live lab (`web/`) is a living side-view tank: day/night, themes, hood
-lights, glass, sand dunes, seed-derived coral, and fish whose body plan comes
-from each species' traits. Click a fish to inspect its generation, inherited
-mutations, and living ancestors; mutants shimmer. Below the tank a census
-strip charts every species' population over the last 240 ticks, the log
-stamps each event with its tick, and the shelf keeps tanks you save in your
-browser. The lab installs as an offline app. Keyboard: F feed, T tap,
-L lights, Space pause, S photo, C census.
-
-`web/engine.js` mirrors `src/mnemoquarium/model.py` rule for rule (the hash
-functions differ, so the same phrase grows a different but equally
-deterministic tank in each).
-
-The project is intentionally small enough to read in one sitting:
-
-- `src/mnemoquarium/model.py` — simulation core
-- `src/mnemoquarium/display.py` — shared cell occupancy helpers
-- `src/mnemoquarium/render.py` — ANSI rendering
-- `src/mnemoquarium/export.py` — SVG tank, JSON, and Markdown exporters
-- `src/mnemoquarium/cli.py` — argument parsing and orchestration
-- `src/mnemoquarium/snapshot.py` — JSON snapshots, history, lineage export
-- `web/engine.js` — browser port of the simulation core
-- `web/tank.js` — canvas side-view aquarium
-- `web/app.js` — lab UI: census strip, log, inspector, shelf
-- `web/deep/` — the submarine game (see [The Deep](#the-deep) above)
+See [CHANGELOG.md](CHANGELOG.md) for release history.

@@ -2,6 +2,34 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.0.0] - 2026-09-13
+
+### Changed
+- **The game is the site now.** `web/deep/` moved up to `web/`, so
+  https://sebby1770.github.io/mnemoquarium/ opens straight into The Deep
+  instead of a landing page in front of it.
+- **No phrase to type.** The front menu is a title, a **Dive** button, and a
+  quiet panel showing what the sea it picked for you has in it. A returning
+  player gets **Continue** with their credits and deepest dive on it instead.
+  Seas are drawn from a curated list; *show me another sea* rerolls, and
+  *Grow a sea from your own words* at the bottom still takes any phrase — it
+  is just no longer a thing you must deal with before you can play.
+- **Dive starts in the water.** Previously the first thing after the menu was
+  the station panel; now you spawn outside the Hull with the dock prompt
+  within reach, so the shop is a choice rather than a gate.
+- Starting a new sea, or typing a different one, asks for confirmation before
+  it overwrites a run worth keeping.
+
+### Removed
+- **The 2D side-view tank** (`web/index.html`, `web/tank.js`, `web/app.js` and
+  its stylesheet). The browser half of the project is the game now.
+- `web/engine.js` stays, and is unchanged: it is the genetics both the game and
+  the Python simulator grow fish by, not part of the old tank's UI.
+
+### Kept
+- The terminal simulator (`mnemoquarium` on the CLI) and its 32 tests are
+  untouched. It remains the reference implementation `web/engine.js` mirrors.
+
 ## [0.9.0] - 2026-09-13
 
 ### Added

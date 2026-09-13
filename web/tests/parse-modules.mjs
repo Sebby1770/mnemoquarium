@@ -1,4 +1,4 @@
-/* Eagerly compile every deep-sea ES module.
+/* Eagerly compile every game ES module.
  *
  * `node --check` is not enough here: V8 pre-parses function bodies lazily, so a
  * malformed literal inside a method (a stray character in a hex number, say)
@@ -15,7 +15,7 @@ import vm from "node:vm";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..", "..");
-const dirs = [join(root, "web", "deep", "src")];
+const dirs = [join(root, "web", "src")];
 
 if (typeof vm.SourceTextModule !== "function") {
   console.error("parse-modules needs --experimental-vm-modules");

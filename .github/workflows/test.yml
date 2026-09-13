@@ -34,11 +34,11 @@ jobs:
       - name: Engine tests
         run: node --test "web/tests/*.test.mjs"
 
-      - name: Syntax check the tank
-        run: node --check web/tank.js && node --check web/app.js && node --check web/sw.js
+      - name: Syntax check the classic scripts
+        run: node --check web/engine.js && node --check web/sw.js
 
       # node --check pre-parses function bodies lazily and lets a malformed
       # literal inside a method through; the browser then refuses the module
       # with no file and no line. This compiles each one eagerly instead.
-      - name: Compile the deep modules
+      - name: Compile the game modules
         run: node --experimental-vm-modules web/tests/parse-modules.mjs

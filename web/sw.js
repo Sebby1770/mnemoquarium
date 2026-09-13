@@ -1,19 +1,42 @@
-/* Mnemoquarium offline shell. Bump CACHE when the shell files change. */
-const CACHE = "mnemoquarium-v0.9.0";
+/* Offline shell for the game. Bump CACHE when the shell files change.
+   three.js is large, so it is cached on first visit and never re-fetched
+   unless the version in the URL changes. */
+const CACHE = "mnemoquarium-deep-v1.1.0";
 const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
-  "./engine.js",
-  "./tank.js",
-  "./app.js",
   "./icon.svg",
   "./manifest.webmanifest",
+  "./vendor/three.module.min.js",
+  "./engine.js",
+  "./src/main.js",
+  "./src/game.js",
+  "./src/config.js",
+  "./src/util.js",
+  "./src/mnemo.js",
+  "./src/bus.js",
+  "./src/geo.js",
+  "./src/ecology.js",
+  "./src/progression.js",
+  "./src/save.js",
+  "./src/world.js",
+  "./src/vfx.js",
+  "./src/fish.js",
+  "./src/creatures.js",
+  "./src/combat.js",
+  "./src/sub.js",
+  "./src/hud.js",
+  "./src/audio.js",
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()),
+    caches
+      .open(CACHE)
+      // One bad path must not sink the whole install, so each file is added alone.
+      .then((cache) => Promise.all(SHELL.map((path) => cache.add(path).catch(() => {}))))
+      .then(() => self.skipWaiting()),
   );
 });
 
@@ -26,13 +49,23 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Network first so a fresh deploy wins; the cache is the offline fallback.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
-  // The deep-sea game ships its own worker and its own cache.
-  if (url.pathname.includes("/deep/")) return;
+
+  // three.js never changes for a given build: cache first, it is 650 KB.
+  if (url.pathname.includes("/vendor/")) {
+    event.respondWith(
+      caches.match(event.request).then((hit) => hit || fetch(event.request).then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        return response;
+      })),
+    );
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
