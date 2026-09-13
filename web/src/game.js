@@ -133,13 +133,18 @@ export class Game {
     this.resize();
     this.clock.start();
 
-    // You begin on the clamps. The station is the tutorial.
-    this.setMode("station");
+    /* Straight into the water. The Hull is right behind you and the prompt to
+       dock shows whenever you are near it, so the shop is never more than a few
+       seconds away — but nobody should have to read a menu to start playing. */
     const zone = zoneForDepth(0);
     this.world.setZone(zone, true);
+    this.sub.undock();
+    this.profile.stats.dives = (this.profile.stats.dives || 0) + 1;
+    this.setMode("dive");
 
     this.log(`the tanks flood. "${this.phrase}" is already down there, in ${this.ecology.species.length} shapes.`, "lore");
-    this.log("sell what you catch at the Hull. buy a deeper casing. the money is under the dark.", "info");
+    this.log("hold the right mouse button on a fish to take it. the hold sells at the Hull behind you.", "info");
+    this.log("click to look around.", "info");
 
     this._tick = (now) => {
       if (this.disposed) return;

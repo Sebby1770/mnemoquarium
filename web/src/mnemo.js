@@ -6,7 +6,7 @@ const E = globalThis.MnemoEngine;
 
 if (!E) {
   throw new Error(
-    "mnemoquarium engine missing: load ../engine.js as a classic script before the deep modules",
+    "mnemoquarium engine missing: load engine.js as a classic script before the game modules",
   );
 }
 

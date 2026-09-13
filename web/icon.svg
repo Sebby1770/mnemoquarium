@@ -1,23 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Mnemoquarium">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Mnemoquarium: The Deep">
   <defs>
-    <linearGradient id="w" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1c5c74"/>
-      <stop offset="1" stop-color="#07131c"/>
+    <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d3a52"/>
+      <stop offset="0.55" stop-color="#061a2c"/>
+      <stop offset="1" stop-color="#03050d"/>
     </linearGradient>
-    <linearGradient id="f" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ffd27a"/>
-      <stop offset="1" stop-color="#e0742a"/>
-    </linearGradient>
+    <radialGradient id="lamp" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffe6a8" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#ffcf6b" stop-opacity="0"/>
+    </radialGradient>
   </defs>
-  <rect width="128" height="128" rx="26" fill="#16100c"/>
-  <rect x="12" y="18" width="104" height="92" rx="10" fill="url(#w)"/>
-  <path d="M12 92c14-8 26 6 40 0s26-8 40 0 18 4 24 0v18H12z" fill="#7a5a34" opacity=".9"/>
-  <path d="M30 86c0-14 6-24 6-24s6 10 6 24" stroke="#d64a6a" stroke-width="5" fill="none" stroke-linecap="round"/>
-  <path d="M96 88c-2-14 6-22 6-22s8 8 4 22" stroke="#e88a3a" stroke-width="5" fill="none" stroke-linecap="round"/>
-  <path d="M52 56c10-12 30-12 40 0-10 12-30 12-40 0z" fill="url(#f)"/>
-  <path d="M52 56l-12-10v20z" fill="#e0742a"/>
-  <circle cx="82" cy="54" r="3" fill="#120c08"/>
-  <circle cx="40" cy="36" r="2.5" fill="#cfefff" opacity=".8"/>
-  <circle cx="46" cy="28" r="1.8" fill="#cfefff" opacity=".6"/>
-  <rect x="12" y="18" width="104" height="92" rx="10" fill="none" stroke="#e8dfd2" stroke-opacity=".25" stroke-width="2"/>
+  <rect width="128" height="128" rx="26" fill="url(#water)"/>
+  <g opacity="0.35" fill="none" stroke="#7fd6e8" stroke-width="2" stroke-linecap="round">
+    <path d="M12 30c10-6 20-6 30 0s20 6 30 0 20-6 30 0"/>
+    <path d="M12 44c10-6 20-6 30 0s20 6 30 0 20-6 30 0" opacity="0.6"/>
+  </g>
+  <ellipse cx="98" cy="70" rx="34" ry="20" fill="url(#lamp)"/>
+  <g transform="translate(2 4)">
+    <path d="M34 70c0-10 9-17 24-17h14c14 0 24 7 24 17s-10 17-24 17H58c-15 0-24-7-24-17z" fill="#123246" stroke="#6fd0e6" stroke-width="3"/>
+    <path d="M60 53V42h12v11" fill="#123246" stroke="#6fd0e6" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="84" cy="70" r="7" fill="#03131d" stroke="#ffd98a" stroke-width="3"/>
+    <path d="M34 62l-16-9v34l16-9" fill="#0d2536" stroke="#6fd0e6" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+  <g fill="#9ef2d8" opacity="0.75">
+    <circle cx="26" cy="96" r="3"/><circle cx="38" cy="106" r="2"/><circle cx="18" cy="110" r="2.4"/>
+  </g>
 </svg>

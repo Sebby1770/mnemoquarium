@@ -1,12 +1,13 @@
 {
-  "name": "Mnemoquarium",
-  "short_name": "Mnemoquarium",
-  "description": "A deterministic memory aquarium: phrases grow into fish, sand, and coral.",
+  "name": "Mnemoquarium: The Deep",
+  "short_name": "The Deep",
+  "description": "A first-person submarine sea grown from a phrase. Net fish, sell them, refit, go deeper.",
   "start_url": "./",
   "scope": "./",
-  "display": "standalone",
-  "background_color": "#070605",
-  "theme_color": "#16100c",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#03060c",
+  "theme_color": "#03060c",
   "icons": [
     { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
