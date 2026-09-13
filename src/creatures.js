@@ -404,7 +404,170 @@ function buildKraken(type) {
   return { group, parts: { arms, mantle, hood }, materials: [material, armMat, eyeMat] };
 }
 
+/* A knot of teeth on a ribbon. Individually pathetic, which is the point:
+   lamprey arrive in numbers and the sonar lance is the answer. */
+function buildLamprey(type) {
+  const group = new THREE.Group();
+  const material = shellMaterial(type, { roughness: 0.5, emissiveIntensity: type.glow * 0.8 });
+
+  const body = spindle({
+    length: type.length, radius: type.radius * 0.3, rings: 14, segments: 7,
+    profile: (t) => Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.92 + 0.08)), 0.4),
+    flattenX: 0.85,
+  });
+  group.add(new THREE.Mesh(body, material));
+
+  // The mouth is a ring, and it is most of the animal's personality.
+  const mouth = new THREE.Mesh(
+    new THREE.TorusGeometry(type.radius * 0.26, type.radius * 0.09, 6, 10),
+    shellMaterial(type, { color: type.bellyColor, emissive: type.bellyColor, emissiveIntensity: 1.2 }),
+  );
+  mouth.position.z = type.length * 0.46;
+  group.add(mouth);
+
+  const fin = blade({ length: type.length * 0.45, width: type.radius * 0.34, taper: 0.6, sweep: 0.5, thickness: 0.005 });
+  fin.rotateZ(Math.PI / 2);
+  fin.translate(0, type.radius * 0.2, -type.length * 0.05);
+  group.add(new THREE.Mesh(fin, material));
+
+  return { group, parts: { mouth }, materials: [material] };
+}
+
+/* Terrain with a hinge in it. Flat, silted, the same colours as the floor —
+   until the jaw opens and it is suddenly the size of your boat. */
+function buildTrapjaw(type) {
+  const group = new THREE.Group();
+  const material = shellMaterial(type, { roughness: 0.95, emissiveIntensity: 0.03 });
+  const mawMat = shellMaterial(type, { color: 0x120b0b, emissive: 0x5a1c1c, emissiveIntensity: 0.35 });
+
+  const body = spindle({
+    length: type.length, radius: type.radius * 0.62, rings: 12, segments: 10,
+    profile: (t) => Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.8 + 0.12)), 0.7),
+    flattenY: 0.34,
+  });
+  group.add(new THREE.Mesh(body, material));
+
+  // Lumps, so it reads as a rock while it is waiting.
+  for (let i = 0; i < 7; i += 1) {
+    const a = (i / 7) * Math.PI * 2;
+    const lump = new THREE.Mesh(new THREE.IcosahedronGeometry(type.radius * 0.3, 0), material);
+    lump.position.set(Math.cos(a) * type.radius * 0.55, type.radius * 0.14, Math.sin(a) * type.length * 0.24);
+    lump.scale.set(1, 0.5, 1);
+    group.add(lump);
+  }
+
+  const jaw = new THREE.Group();
+  jaw.position.z = type.length * 0.3;
+  const maw = new THREE.Mesh(new THREE.ConeGeometry(type.radius * 0.7, type.length * 0.5, 9, 1, true), mawMat);
+  maw.geometry.rotateX(-Math.PI / 2);
+  jaw.add(maw);
+  for (let i = 0; i < 12; i += 1) {
+    const a = (i / 12) * Math.PI * 2;
+    const tooth = new THREE.Mesh(
+      new THREE.ConeGeometry(type.radius * 0.055, type.radius * 0.34, 4),
+      shellMaterial(type, { color: type.bellyColor, emissiveIntensity: 0.1 }),
+    );
+    tooth.geometry.rotateX(-Math.PI / 2);
+    tooth.position.set(Math.cos(a) * type.radius * 0.5, Math.sin(a) * type.radius * 0.22, type.length * 0.2);
+    group.add(tooth);
+  }
+  group.add(jaw);
+
+  return { group, parts: { jaw }, materials: [material, mawMat] };
+}
+
+/* It shows you a docking light the colour of the Hull's. There is no dock. */
+function buildSiren(type) {
+  const group = new THREE.Group();
+  const material = new THREE.MeshBasicMaterial({
+    color: type.color,
+    transparent: true,
+    opacity: 0.3,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const lampMat = new THREE.MeshBasicMaterial({
+    color: type.bellyColor,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  // A soft body you only half see, hung under a very convincing light.
+  const veil = new THREE.Mesh(new THREE.ConeGeometry(type.radius * 0.8, type.length, 10, 1, true), material);
+  veil.geometry.rotateX(Math.PI / 2);
+  veil.geometry.translate(0, 0, -type.length * 0.4);
+  group.add(veil);
+
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(type.radius * 0.66, type.radius * 0.07, 6, 20), lampMat);
+  ring.position.z = type.length * 0.22;
+  group.add(ring);
+
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(type.radius * 0.2, 10, 8), lampMat);
+  bulb.position.z = type.length * 0.24;
+  group.add(bulb);
+  const lamp = new THREE.PointLight(type.bellyColor, 14, type.radius * 26, 1.6);
+  bulb.add(lamp);
+
+  const threads = [];
+  for (let i = 0; i < 5; i += 1) {
+    const a = (i / 5) * Math.PI * 2;
+    const { root, joints } = limb(3, type.length * 0.9, type.radius * 0.07, material);
+    root.position.set(Math.cos(a) * type.radius * 0.4, Math.sin(a) * type.radius * 0.4, -type.length * 0.3);
+    root.rotation.y = Math.PI;
+    group.add(root);
+    threads.push({ root, joints, angle: a });
+  }
+
+  return { group, parts: { ring, bulb, lamp, threads }, materials: [material, lampMat] };
+}
+
+/* Mostly mouth. The body behind it is an afterthought and looks it. */
+function buildGulper(type) {
+  const group = new THREE.Group();
+  const material = shellMaterial(type, { roughness: 0.8, emissiveIntensity: type.glow * 0.4 });
+  const mawMat = shellMaterial(type, { color: 0x2a0f22, emissive: type.bellyColor, emissiveIntensity: 0.5 });
+
+  const jaw = new THREE.Group();
+  const maw = new THREE.Mesh(new THREE.ConeGeometry(type.radius * 1.05, type.length * 0.46, 12, 1, true), mawMat);
+  maw.geometry.rotateX(-Math.PI / 2);
+  maw.geometry.translate(0, 0, type.length * 0.16);
+  jaw.add(maw);
+  group.add(jaw);
+
+  const tail = spindle({
+    length: type.length * 0.8, radius: type.radius * 0.3, rings: 14, segments: 8,
+    profile: (t) => Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.7 + 0.3)), 1.3),
+    flattenX: 0.8,
+  });
+  tail.translate(0, 0, -type.length * 0.34);
+  group.add(new THREE.Mesh(tail, material));
+
+  // A thin line of light down the tail, the only way you see it coming.
+  const strip = blade({ length: type.length * 0.6, width: type.radius * 0.12, taper: 0.2, sweep: 0.4, thickness: 0.004 });
+  strip.rotateZ(Math.PI / 2);
+  strip.translate(0, type.radius * 0.22, -type.length * 0.2);
+  group.add(new THREE.Mesh(strip, shellMaterial(type, {
+    color: type.bellyColor, emissive: type.bellyColor, emissiveIntensity: 1.1,
+  })));
+
+  const tailPivot = new THREE.Group();
+  tailPivot.position.z = -type.length * 0.62;
+  const fin = blade({ length: type.length * 0.2, width: type.radius * 0.5, taper: 0.4, sweep: 0.3 });
+  fin.rotateZ(Math.PI / 2);
+  tailPivot.add(new THREE.Mesh(fin, material));
+  group.add(tailPivot);
+
+  return { group, parts: { jaw, tail: tailPivot }, materials: [material, mawMat] };
+}
+
 const BUILDERS = {
+  lamprey: buildLamprey,
+  trapjaw: buildTrapjaw,
+  siren: buildSiren,
+  gulper: buildGulper,
   shark: buildShark,
   squid: buildSquid,
   angler: buildAngler,
@@ -484,6 +647,24 @@ export class CreatureManager {
     if (y <= floor + type.radius) return;
 
     _v.set(x, y, z);
+
+    /* Some things do not arrive alone. One lamprey is nothing to worry about,
+       which is exactly why they come as a knot of them. */
+    if (type.swarm) {
+      const [lo, hi] = type.swarm;
+      const count = lo + this.rng.randrange(Math.max(1, hi - lo + 1));
+      const room = Math.max(0, budget + 6 - this._countAlive());
+      for (let i = 0; i < Math.min(count, room); i += 1) {
+        _v2.set(
+          x + (this.rng.random() - 0.5) * 16,
+          clamp(y + (this.rng.random() - 0.5) * 10, floor + type.radius * 2, -type.radius),
+          z + (this.rng.random() - 0.5) * 16,
+        );
+        this.spawn(id, _v2);
+      }
+      return;
+    }
+
     this.spawn(id, _v);
   }
 
@@ -518,6 +699,8 @@ export class CreatureManager {
       wanderTimer: 0,
       windup: 0,
       dying: 0,
+      buried: false,
+      lunge: 0,
       trail: [],
       jet: 0,
       revealed: 0,
@@ -527,6 +710,17 @@ export class CreatureManager {
     // The serpent needs a trail to lay its body along before it first moves.
     if (typeId === "leviathan") {
       for (let i = 0; i < 200; i += 1) creature.trail.push(position.clone());
+    }
+
+    /* An ambusher is terrain until it is not: it starts flat on the floor,
+       barely aggroed, and does not move at all until you are close enough that
+       moving is the last thing you want it to do. */
+    if (type.ambush) {
+      const floor = this.game.world.heightAt(position.x, position.z);
+      creature.position.y = floor + type.radius * 0.55;
+      creature.buried = true;
+      creature.state = "idle";
+      built.group.rotation.x = 0;
     }
 
     this.group.add(built.group);
@@ -643,6 +837,18 @@ export class CreatureManager {
       return;
     }
 
+    // The moment it stops being scenery.
+    if (c.buried && c.aggro) {
+      c.buried = false;
+      c.lunge = 1.1;
+      if (this.game.vfx) {
+        this.game.vfx.bloodCloud(c.position, 0x6b5d43);
+        this.game.vfx.screenShake(0.4);
+      }
+      if (this.game.audio) this.game.audio.sfx("roar");
+      this.game.log("the floor opens. it was never the floor.", "bad");
+    }
+
     if (distance <= type.attackRange) {
       if (c.state !== "attack") {
         c.state = "attack";
@@ -711,6 +917,14 @@ export class CreatureManager {
     const type = c.type;
     const sub = this.game.sub;
 
+    // Buried things do not patrol. They wait, which is worse.
+    if (c.buried) {
+      const floor = this.game.world.heightAt(c.position.x, c.position.z);
+      c.position.y = damp(c.position.y, floor + type.radius * 0.55, 3, dt);
+      c.velocity.set(0, 0, 0);
+      return;
+    }
+
     if (c.state === "patrol" || !sub) {
       c.wanderTimer -= dt;
       if (c.wanderTimer <= 0) {
@@ -752,6 +966,11 @@ export class CreatureManager {
     }
 
     let speed = type.speed;
+    if (c.lunge > 0) {
+      // A short, committed burst — far faster than it can sustain.
+      c.lunge -= dt;
+      speed = type.lungeSpeed || type.speed * 2;
+    }
     if (c.state === "patrol") speed *= 0.42;
     else if (c.state === "attack") speed *= 0.55;
     else if (c.state === "flee") speed *= 1.15;
@@ -806,6 +1025,21 @@ export class CreatureManager {
         const gape = c.state === "attack" ? 1 + (1 - clamp01(c.windup / 0.45)) * 0.9 : 1;
         parts.jaw.scale.set(gape, gape, gape);
       }
+    }
+    if (parts.mouth) {
+      // The ring opens and shuts whether or not there is anything in it.
+      const gape = 1 + Math.sin(t * 5.5) * 0.22 + (c.state === "attack" ? 0.4 : 0);
+      parts.mouth.scale.set(gape, gape, 1);
+    }
+    if (parts.ring && parts.bulb) {
+      /* The siren's whole trick is that its light looks like a docking ring,
+         so it turns slowly and steadily the way a real beacon does — and only
+         flares once it has you. */
+      parts.ring.rotation.z += dt * 0.8;
+      const flare = c.state === "attack" ? 1.8 : 1;
+      const pulse = (0.85 + Math.sin(t * 1.4) * 0.15) * flare;
+      parts.bulb.scale.setScalar(pulse);
+      if (parts.lamp) parts.lamp.intensity = 9 * pulse;
     }
     if (parts.arms) {
       const sweep = c.state === "attack" ? 1.5 : 0.55;

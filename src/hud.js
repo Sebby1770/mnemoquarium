@@ -1267,59 +1267,67 @@ export class HUD {
     const frag = document.createDocumentFragment();
     this.shopRows.clear();
 
-    for (const up of UPGRADES) {
+    /* Twelve cards, each carrying an icon, pips, a sentence, a two-column stat
+       table and a button, is a lot to read when all you want to know is what
+       you can afford. One row each, and the ones you can actually buy float to
+       the top. */
+    const rows = UPGRADES.map((up) => {
       const level = upgradeLevel(profile.upgrades, up.id);
       const maxLevel = up.values.length - 1;
       const cost = upgradeCost(profile.upgrades, up.id);
       const maxed = cost == null || level >= maxLevel;
       const affordable = !maxed && profile.credits >= cost;
+      return { up, level, maxLevel, cost, maxed, affordable };
+    });
+    rows.sort((a, b) => {
+      const rank = (r) => (r.maxed ? 2 : r.affordable ? 0 : 1);
+      const d = rank(a) - rank(b);
+      if (d) return d;
+      // Within a group, cheapest first: that is the next thing you will buy.
+      return (a.cost || 0) - (b.cost || 0);
+    });
 
-      const card = elem("article", "shop-card");
-      card.dataset.id = up.id;
-      card.dataset.state = maxed ? "maxed" : affordable ? "ready" : "poor";
+    const unitFor = (id) => UPGRADE_UNITS[id] || "";
 
-      const head = elem("header", "shop-head");
-      head.appendChild(elem("span", "shop-icon", up.icon));
-      const title = elem("div", "shop-title");
-      title.appendChild(elem("strong", null, up.name));
-      const pips = elem("span", "pips");
-      for (let i = 0; i < maxLevel; i += 1) {
-        const pip = elem("i", "pip");
-        if (i < level) pip.dataset.on = "1";
-        pips.appendChild(pip);
-      }
-      title.appendChild(pips);
-      head.appendChild(title);
-      card.appendChild(head);
+    for (const r of rows) {
+      const { up, level, maxLevel, cost, maxed, affordable } = r;
+      const unit = unitFor(up.id);
 
-      card.appendChild(elem("p", "shop-blurb", up.blurb));
+      const row = elem("article", "shop-row");
+      row.dataset.id = up.id;
+      row.dataset.state = maxed ? "maxed" : affordable ? "ready" : "poor";
 
-      const unit = UPGRADE_UNITS[up.id] || "";
-      const stat = elem("dl", "shop-stat");
-      const now = elem("div");
-      now.append(elem("dt", null, "now"), elem("dd", null, `${up.values[level]}${unit}`));
-      stat.appendChild(now);
+      row.appendChild(elem("span", "shop-icon", up.icon));
+
+      const main = elem("div", "shop-main");
+      main.appendChild(elem("strong", null, up.name));
+      const fitted = level === 0 && up.values[0] === 0 ? "not fitted" : `mark ${level} of ${maxLevel}`;
+      main.appendChild(elem("span", "shop-sub", fitted));
+      row.appendChild(main);
+
+      const change = elem("div", "shop-change");
+      change.appendChild(elem("span", "from", `${up.values[level]}${unit}`));
       if (!maxed) {
-        const next = elem("div", "next");
-        next.append(elem("dt", null, "next"), elem("dd", null, `${up.values[level + 1]}${unit}`));
-        stat.appendChild(next);
+        change.appendChild(elem("span", "arrow", "\u2192"));
+        change.appendChild(elem("span", "to", `${up.values[level + 1]}${unit}`));
       }
-      card.appendChild(stat);
+      row.appendChild(change);
 
       const btn = elem("button", "buy");
       btn.type = "button";
       btn.dataset.upgrade = up.id;
       if (maxed) {
-        btn.textContent = "at the limit";
+        btn.textContent = "done";
         btn.disabled = true;
       } else {
         btn.textContent = `${formatCredits(cost)} cr`;
         btn.disabled = !affordable;
+        btn.title = up.blurb;
       }
-      card.appendChild(btn);
+      row.appendChild(btn);
 
-      this.shopRows.set(up.id, card);
-      frag.appendChild(card);
+      this.shopRows.set(up.id, row);
+      frag.appendChild(row);
     }
     this.shopList.replaceChildren(frag);
   }

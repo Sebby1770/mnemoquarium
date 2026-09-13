@@ -65,7 +65,7 @@ export class Game {
     this.renderer.toneMappingExposure = 1.04;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(68, window.innerWidth / Math.max(1, window.innerHeight), 0.1, 1400);
+    this.camera = new THREE.PerspectiveCamera(78, window.innerWidth / Math.max(1, window.innerHeight), 0.1, 1400);
     this.clock = new THREE.Clock();
 
     /* ---- subsystems, in the order the contract fixes -------------------- */
@@ -131,6 +131,8 @@ export class Game {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    // The cockpit window is cut to the frustum, so it is re-cut on resize.
+    if (this.sub && this.sub.layoutCockpit) this.sub.layoutCockpit();
   }
 
   /* ===================================================================== */
