@@ -54,6 +54,7 @@ const els = {
   form: $("start-form"),
   phrase: $("start-phrase"),
   reset: $("start-reset"),
+  summary: $("start-summary"),
   loading: $("loading"),
   loadingText: $("loading-text"),
   loadingBar: $("loading-bar"),
@@ -151,6 +152,16 @@ function showSea(next) {
     frag.appendChild(card(entry));
   }
   els.roster.replaceChildren(frag);
+
+  // One line that says what this sea is, so the cards are detail rather than
+  // homework.
+  if (els.summary) {
+    const bands = roster.map((e) => zoneIndex(e.zoneId));
+    const top = ZONES[Math.min(...bands)];
+    const bottom = ZONES[Math.max(...bands)];
+    const best = roster.reduce((a, b) => (b.baseValue > a.baseValue ? b : a), roster[0]);
+    els.summary.textContent = `${roster.length} species · ${top.name} down to ${bottom.name} · best ${formatCredits(best.baseValue)} cr`;
+  }
 }
 
 function anotherSea() {

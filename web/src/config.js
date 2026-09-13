@@ -32,7 +32,7 @@ export const ZONES = [
     snow: 0.15,              // marine snow density 0..1
     valueMultiplier: 1.0,
     hostileBudget: 1,
-    hostiles: [["shark", 1.0]],
+    hostiles: [["shark", 0.72], ["lamprey", 0.28]],
     blurb: "warm, shallow, and already picked over",
   },
   {
@@ -46,7 +46,7 @@ export const ZONES = [
     snow: 0.3,
     valueMultiplier: 1.8,
     hostileBudget: 2,
-    hostiles: [["shark", 0.6], ["squid", 0.4]],
+    hostiles: [["shark", 0.42], ["squid", 0.3], ["lamprey", 0.28]],
     blurb: "green columns, and things that hold on",
   },
   {
@@ -59,8 +59,8 @@ export const ZONES = [
     water: 0x0d2438,
     snow: 0.55,
     valueMultiplier: 3.2,
-    hostileBudget: 3,
-    hostiles: [["shark", 0.35], ["squid", 0.5], ["angler", 0.15]],
+    hostileBudget: 4,
+    hostiles: [["shark", 0.22], ["squid", 0.32], ["angler", 0.14], ["lamprey", 0.18], ["trapjaw", 0.14]],
     blurb: "the last of the light, spending itself",
   },
   {
@@ -73,8 +73,8 @@ export const ZONES = [
     water: 0x040c16,
     snow: 0.8,
     valueMultiplier: 6.0,
-    hostileBudget: 3,
-    hostiles: [["squid", 0.45], ["angler", 0.35], ["leviathan", 0.2]],
+    hostileBudget: 4,
+    hostiles: [["squid", 0.26], ["angler", 0.22], ["leviathan", 0.14], ["trapjaw", 0.2], ["gulper", 0.18]],
     blurb: "no light but the light that wants you closer",
   },
   {
@@ -87,8 +87,8 @@ export const ZONES = [
     water: 0x03020a,
     snow: 1.0,
     valueMultiplier: 11.0,
-    hostileBudget: 4,
-    hostiles: [["wraith", 0.4], ["leviathan", 0.3], ["squid", 0.15], ["kraken", 0.15]],
+    hostileBudget: 5,
+    hostiles: [["wraith", 0.24], ["leviathan", 0.18], ["gulper", 0.16], ["siren", 0.18], ["trapjaw", 0.12], ["kraken", 0.12]],
     blurb: "where the tank keeps what it could not hold",
   },
 ];
@@ -325,6 +325,42 @@ export const CREATURES = {
     color: 0x6a4fb5, bellyColor: 0xc9b8ff, glow: 0.9,
     phasing: true, memoryDrain: true,
     trophy: "unremembered name", mythic: true,
+  },
+  lamprey: {
+    id: "lamprey", name: "Static Lamprey", kind: "swarm",
+    hp: 26, damage: 5, speed: 17, turn: 3.4, radius: 1.1, length: 2.4,
+    aggro: 80, attackRange: 4.5, attackCooldown: 0.9, bounty: 40,
+    color: 0x6d5f7a, bellyColor: 0xc9ff9e, glow: 0.5,
+    // Arrives as a knot of them. One is nothing; nine is a problem.
+    swarm: [6, 11], latch: true, batteryDrain: 2,
+    trophy: "ring of teeth", mythic: false,
+  },
+  trapjaw: {
+    id: "trapjaw", name: "Trapjaw", kind: "ambusher",
+    hp: 260, damage: 46, speed: 21, turn: 1.1, radius: 3.6, length: 7.4,
+    aggro: 48, attackRange: 9, attackCooldown: 3.4, bounty: 620,
+    color: 0x2b2a24, bellyColor: 0xe8d9a8, glow: 0.1,
+    // Sits in the silt looking like the floor until you are nearly on it.
+    ambush: true, lungeSpeed: 44,
+    trophy: "hinged jaw", mythic: false,
+  },
+  siren: {
+    id: "siren", name: "Hull-Light Siren", kind: "spirit",
+    hp: 380, damage: 26, speed: 15, turn: 2.2, radius: 3.2, length: 8,
+    aggro: 210, attackRange: 13, attackCooldown: 2.4, bounty: 1900,
+    color: 0x2a3f6b, bellyColor: 0xffd98a, glow: 1,
+    // It shows you a docking light. There is no dock.
+    lure: true, mimic: true, memoryDrain: false,
+    trophy: "false beacon", mythic: true,
+  },
+  gulper: {
+    id: "gulper", name: "Gulper", kind: "beast",
+    hp: 420, damage: 33, speed: 11, turn: 0.9, radius: 5, length: 15,
+    aggro: 110, attackRange: 14, attackCooldown: 3.2, bounty: 1100,
+    color: 0x140f1c, bellyColor: 0x7a3f6b, glow: 0.2,
+    // A mouth with an animal behind it. Swallows, then drags.
+    swallow: true,
+    trophy: "distended gullet", mythic: false,
   },
   kraken: {
     id: "kraken", name: "Kraken of Static", kind: "boss",
