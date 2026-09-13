@@ -17,6 +17,7 @@ import { FishManager } from "./fish.js";
 import { CreatureManager } from "./creatures.js";
 import { Combat } from "./combat.js";
 import { Audio } from "./audio.js";
+import { Water } from "./water.js";
 import { HUD } from "./hud.js";
 
 const MAX_DT = 1 / 20;         // a long frame must not teleport the boat
@@ -69,6 +70,8 @@ export class Game {
 
     /* ---- subsystems, in the order the contract fixes -------------------- */
     this.ecology = new Ecology(this.phrase, this.seed);
+    // Water first: every lit material built after this asks it for the optics.
+    this.water = new Water(this);
     this.world = new SeaWorld(this);
     this.vfx = new VFX(this);
     this.sub = new Submarine(this);
@@ -77,6 +80,13 @@ export class Game {
     this.combat = new Combat(this);
     this.audio = new Audio(this);
     this.hud = new HUD(this);
+
+    /* Patch everything already in the scene, then keep patching as creatures
+       arrive. register() is idempotent, so spawning is cheap. */
+    this.water.adoptScene(this.scene);
+    this.bus.on("creature:spawn", (e) => {
+      if (e && e.creature) this.water.adopt(e.creature.object);
+    });
 
     /* ---- bookkeeping ---------------------------------------------------- */
     this.dirty = false;
@@ -175,6 +185,7 @@ export class Game {
       this.creatures.update(dt * 0.2);
       this.combat.update(dt);
     }
+    this.water.update(dt);
     this.vfx.update(dt);
     this.audio.update(dt);
     this.hud.update(dt);
@@ -478,7 +489,7 @@ export class Game {
     document.removeEventListener("visibilitychange", this._onVisibility);
     window.removeEventListener("pagehide", this._onUnload);
 
-    for (const system of [this.hud, this.audio, this.combat, this.creatures, this.fish, this.sub, this.vfx, this.world, this.ecology]) {
+    for (const system of [this.hud, this.audio, this.combat, this.creatures, this.fish, this.sub, this.vfx, this.world, this.water, this.ecology]) {
       try {
         if (system && system.dispose) system.dispose();
       } catch (err) {
