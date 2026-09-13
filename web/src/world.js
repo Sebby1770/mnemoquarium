@@ -64,9 +64,9 @@ const PROFILE = [
 /* Floor colour by depth. Sand bleaches out fast; below the kelp everything is
    silt, and below that everything is the colour of a closed eye. */
 const FLOOR_STOPS = [
-  [0, 0xd9c9a0],
-  [70, 0xb6a276],
-  [150, 0x7d8862],
+  [0, 0xb8a582],
+  [70, 0x94815c],
+  [150, 0x5f6a4c],
   [300, 0x46564d],
   [520, 0x2a3844],
   [820, 0x18212c],
@@ -86,6 +86,19 @@ const ROCK_STOPS = [
 function buildStops(table) {
   return table.map(([depth, hex]) => ({ depth, color: new THREE.Color(hex) }));
 }
+
+const NEAR_SIZE = 1760;            // metres of high-detail ground under the sub
+const NEAR_SEG = 176;              // 10 m quads
+/* Height sampling costs about six microseconds a call and a row is 177 of
+   them, so two rows is already a millisecond of frame time. Shading is ten
+   times cheaper and can take bigger bites. A full tile takes a couple of
+   seconds this way, against the twenty-odd seconds of travel between
+   re-centres — slack enough that a rebuild is never visible. */
+const NEAR_HEIGHT_ROWS_PER_FRAME = 2;
+const NEAR_SHADE_ROWS_PER_FRAME = 14;
+
+const _nearFloor = new THREE.Color();
+const _nearRock = new THREE.Color();
 
 const FLOOR_RAMP = buildStops(FLOOR_STOPS);
 const ROCK_RAMP = buildStops(ROCK_STOPS);
@@ -484,6 +497,38 @@ export class SeaWorld {
     this.canyonAmpA = randRange(shapeRng, 150, 280);
     this.canyonAmpB = randRange(shapeRng, 70, 160);
 
+    /* A margin, not a bowl. One direction is the shallow side — a broad
+       continental shelf you can work for a long time — and the opposite side
+       falls away early. Without this the depth is a pure function of distance
+       from the Hull and every heading is the same journey. */
+    const marginAngle = shapeRng.random() * TAU;
+    this.marginCos = Math.cos(marginAngle);
+    this.marginSin = Math.sin(marginAngle);
+
+    /* A second trench arm, so the deep is a system rather than one ditch. */
+    const armAngle = marginAngle + randRange(shapeRng, 0.7, 2.3);
+    this.armCos = Math.cos(armAngle);
+    this.armSin = Math.sin(armAngle);
+    this.armPhase = shapeRng.random() * TAU;
+    this.armAmp = randRange(shapeRng, 120, 240);
+
+    /* Seamounts: isolated peaks off the deep floor. Some break up into the
+       twilight, which makes them visible from a long way out and worth the
+       swim. */
+    this.seamounts = [];
+    const mounts = 9 + shapeRng.randrange(4);
+    for (let i = 0; i < mounts; i += 1) {
+      const a = shapeRng.random() * TAU;
+      const rad = lerp(700, SEA.worldRadius * 0.94, Math.sqrt(shapeRng.random()));
+      this.seamounts.push({
+        x: Math.cos(a) * rad,
+        z: Math.sin(a) * rad,
+        radius: randRange(shapeRng, 180, 420),
+        height: randRange(shapeRng, 220, 760),
+        sharp: randRange(shapeRng, 1.5, 2.6),
+      });
+    }
+
     /* Palette state. Everything zone-coloured reads from `paletteNow`. */
     this.zone = zoneForDepth(-this.stationPosition.y);
     this.paletteFrom = paletteFromZone(this.zone, makePalette());
@@ -528,44 +573,104 @@ export class SeaWorld {
   sampleHeight(x, z) {
     const s = this.seed;
     const r = Math.sqrt(x * x + z * z);
+    const R = SEA.worldRadius;
 
-    let depth = lerp(SEA.shelfDepth, SEA.trenchDepth, profileFraction(r));
+    /* Domain warp first. Sampling noise at a position that has itself been
+       pushed around by noise is the cheapest way to stop a landscape reading
+       as symmetrical blobs — it buys creases, overhangs in silhouette, and
+       ridgelines that wander. */
+    const wx = x + fbm2D((s ^ 0x51ed270b) >>> 0, x * 0.00042, z * 0.00042, 3) * 320;
+    const wz = z + fbm2D((s ^ 0x1b56c4e9) >>> 0, x * 0.00042, z * 0.00042, 3) * 320;
 
-    // Rolling relief. The floor gets more violent as it gets deeper.
-    const relief = lerp(6, 78, smoothstep(120, 1200, r));
-    depth += fbm2D(s, x * 0.00192, z * 0.00192, 4) * relief;
+    /* The margin. `along` runs from -1 deep in the shelf to +1 out over the
+       basin, warped so the coastline is not a straight edge and offset so the
+       Hull sits well inside the shallow side. */
+    const along = clamp((x * this.marginCos + z * this.marginSin) / R - 0.28
+      + fbm2D((s ^ 0x2f9a1c77) >>> 0, x * 0.00055, z * 0.00055, 3) * 0.2, -1, 1);
+    const tDir = smootherstep(-0.34, 0.72, along);
 
-    // Reef spines near the top, rock ridges further out.
-    const spine = lerp(9, 48, smoothstep(90, 900, r));
-    depth -= (ridge2D((s ^ 0x9e3779b9) >>> 0, x * 0.0033, z * 0.0033, 3) - 0.45) * spine;
+    /* Distance still counts, but only a fifth as much on the shelf side as on
+       the basin side. That is what buys a shallow half of the map you can work
+       for a long time and a deep half that drops away early — instead of a
+       single funnel where every heading is the same journey. */
+    const radial = smootherstep(250, R * 0.95, r);
+    let t = clamp01(radial * (0.22 + 0.78 * tDir) + tDir * 0.3);
 
-    // Coarse grain — deliberately no finer than the mesh can carry.
-    depth += fbm2D((s + 4409) >>> 0, x * 0.0125, z * 0.0125, 2) * 3.4;
+    let depth = lerp(SEA.shelfDepth, SEA.trenchDepth, t);
 
-    // A winding canyon, rotated by the phrase, cut deeper the further out it
-    // runs. It keeps its distance from the station so the approach stays flyable.
-    const across = x * this.canyonCos - z * this.canyonSin;
-    const along = x * this.canyonSin + z * this.canyonCos;
-    const meander =
-      Math.sin(along * 0.0028 + this.canyonPhaseA) * this.canyonAmpA +
-      Math.sin(along * 0.0011 + this.canyonPhaseB) * this.canyonAmpB;
-    const halfWidth = 130 + Math.sin(along * 0.0017 + this.canyonPhaseC) * 46;
-    const across0 = Math.abs(across - meander);
-    const cut = 1 - smootherstep(halfWidth * 0.22, halfWidth, across0);
-    if (cut > 0) {
-      const sx = x - this.stationPosition.x;
-      const sz = z - this.stationPosition.z;
-      const clearStation = smoothstep(190, 560, Math.sqrt(sx * sx + sz * sz));
-      depth += cut * clearStation * (105 + 330 * smoothstep(300, 1300, r));
+    /* The shelf break: a real escarpment where the shelf gives up, rather than
+       a gradient. It follows the warped margin, so it reads as a coastline you
+       can fly along and navigate by. */
+    const brk = smootherstep(0.20, 0.33, t) - smootherstep(0.33, 0.46, t) * 0.25;
+    depth += brk * 210;
+
+    /* Relief, quiet on the plains and violent on the slope. */
+    const slopeBand = smoothstep(0.12, 0.42, t) * (1 - smoothstep(0.62, 0.92, t));
+    const relief = lerp(7, 54, smoothstep(140, 1400, r)) + slopeBand * 70;
+    depth += fbm2D(s, wx * 0.00171, wz * 0.00169, 5) * relief;
+
+    // Rock ridges, strongest on the slope where the sediment has run off.
+    const spine = lerp(10, 42, smoothstep(90, 1100, r)) * (0.45 + slopeBand);
+    depth -= (ridge2D((s ^ 0x9e3779b9) >>> 0, wx * 0.0029, wz * 0.0031, 3) - 0.45) * spine;
+
+    // Coarse grain, no finer than the near mesh can carry.
+    depth += fbm2D((s + 4409) >>> 0, x * 0.0125, z * 0.0125, 2) * 3.1;
+
+    /* Two trench arms that meet. Each is a meandering cut that deepens as it
+       runs out, and both keep clear of the Hull so the approach stays flyable. */
+    depth += this._trenchCut(x, z, r, this.canyonCos, this.canyonSin,
+      this.canyonPhaseA, this.canyonPhaseB, this.canyonPhaseC,
+      this.canyonAmpA, this.canyonAmpB, 130, 105, 330);
+    depth += this._trenchCut(x, z, r, this.armCos, this.armSin,
+      this.armPhase, this.armPhase * 1.7, this.armPhase * 0.6,
+      this.armAmp, this.armAmp * 0.5, 92, 70, 240);
+
+    /* Seamounts. Subtracted last among the features so a peak can stand in the
+       middle of a trench and still be a peak. */
+    for (let i = 0; i < this.seamounts.length; i += 1) {
+      const m = this.seamounts[i];
+      const dx = x - m.x;
+      const dz = z - m.z;
+      const d2 = (dx * dx + dz * dz) / (m.radius * m.radius);
+      if (d2 < 9) depth -= m.height * Math.exp(-Math.pow(d2, m.sharp * 0.5));
     }
 
-    // Flatten a pad under the Hull. Applied last so the canyon cannot eat it.
-    const dx = x - this.stationPosition.x;
-    const dz = z - this.stationPosition.z;
-    const pad = 1 - smootherstep(75, 265, Math.sqrt(dx * dx + dz * dz));
-    if (pad > 0) depth = lerp(depth, SEA.shelfDepth, pad * 0.92);
+    // Flatten a pad under each outpost. Applied last so nothing eats it.
+    depth = this._flattenPads(x, z, depth);
 
-    return -depth;
+    /* A tall seamount on a shallow bearing can otherwise punch through the
+       surface, and there is no island in this game for it to become. */
+    return -Math.max(depth, 16);
+  }
+
+  /* One meandering cut. Pulled out of sampleHeight so the trench system can
+     have more than one arm without the function turning into a wall of maths. */
+  _trenchCut(x, z, r, cos, sin, phaseA, phaseB, phaseC, ampA, ampB, width, near, far) {
+    const across = x * cos - z * sin;
+    const along = x * sin + z * cos;
+    const meander = Math.sin(along * 0.0028 + phaseA) * ampA + Math.sin(along * 0.0011 + phaseB) * ampB;
+    const halfWidth = width + Math.sin(along * 0.0017 + phaseC) * (width * 0.35);
+    const offset = Math.abs(across - meander);
+    const cut = 1 - smootherstep(halfWidth * 0.22, halfWidth, offset);
+    if (cut <= 0) return 0;
+    const sx = x - this.stationPosition.x;
+    const sz = z - this.stationPosition.z;
+    const clearStation = smoothstep(190, 560, Math.sqrt(sx * sx + sz * sz));
+    return cut * clearStation * (near + far * smoothstep(300, 1800, r));
+  }
+
+  /* Every outpost needs somewhere flat to stand. */
+  _flattenPads(x, z, depth) {
+    let out = depth;
+    const pads = this.pads || [[this.stationPosition.x, this.stationPosition.z, SEA.shelfDepth, 75, 265]];
+    for (let i = 0; i < pads.length; i += 1) {
+      const [px, pz, target, inner, outer] = pads[i];
+      const dx = x - px;
+      const dz = z - pz;
+      const pad = 1 - smootherstep(inner, outer, Math.sqrt(dx * dx + dz * dz));
+      if (pad > 0) out = lerp(out, target, pad * 0.92);
+    }
+    return out;
   }
 
   _buildTerrain() {
@@ -628,15 +733,193 @@ export class SeaWorld {
     }));
     this.terrain = new THREE.Mesh(geo, this.terrainMaterial);
     this.terrain.name = "seabed";
+    /* Across 9.6 km this sheet carries 40 m quads: fine as a horizon, far too
+       coarse underfoot. It is dropped a couple of metres so the detail mesh
+       below always wins where the two overlap, and the error is invisible at
+       the distance you ever see it from. */
+    this.terrain.position.y = -2.5;
     this.terrain.matrixAutoUpdate = false;
     this.terrain.updateMatrix();
     this.terrain.receiveShadow = false;
     this.group.add(this.terrain);
+
+    this._buildNearTerrain();
+  }
+
+  /* The ground you are actually flying over: a single high-resolution tile
+     that follows the sub. Re-sampling it is thousands of noise evaluations, so
+     the work is spread over several frames into a scratch buffer and only
+     copied into the live attributes when the whole tile is ready — a partly
+     rebuilt tile would visibly ripple. */
+  _buildNearTerrain() {
+    const size = NEAR_SIZE;
+    const seg = NEAR_SEG;
+    const n = seg + 1;
+    this.nearN = n;
+    this.nearStep = size / seg;
+    this.nearHalf = size / 2;
+
+    const geo = this._geo(new THREE.PlaneGeometry(size, size, seg, seg));
+    geo.rotateX(-Math.PI / 2);
+    geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * n * 3), 3));
+
+    this.nearGeo = geo;
+    this.nearScratchY = new Float32Array(n * n);
+    this.nearScratchC = new Float32Array(n * n * 3);
+    this.nearScratchN = new Float32Array(n * n * 3);
+    /* Published alongside nearCentre, so heightAt never reads a tile that is
+       half way through being rebuilt for a different centre. */
+    this.nearHeights = null;
+    this.nearJob = null;
+    this.nearCentre = new THREE.Vector2(Infinity, Infinity);
+
+    this.near = new THREE.Mesh(geo, this.terrainMaterial);
+    this.near.name = "seabed-near";
+    this.near.frustumCulled = false;
+    this.group.add(this.near);
+  }
+
+  /* Kick off a rebuild centred on (cx, cz), snapped to the vertex grid so the
+     tile never shifts by a fraction of a quad and shimmers. */
+  _startNearJob(cx, cz) {
+    const step = this.nearStep;
+    const sx = Math.round(cx / step) * step;
+    const sz = Math.round(cz / step) * step;
+    if (this.nearJob && this.nearJob.x === sx && this.nearJob.z === sz) return;
+    this.nearJob = { x: sx, z: sz, row: 0, shade: 0 };
+  }
+
+  _advanceNearJob() {
+    const job = this.nearJob;
+    if (!job) return;
+
+    const n = this.nearN;
+    const step = this.nearStep;
+    const half = this.nearHalf;
+    const heights = this.nearScratchY;
+
+    /* Phase one: heights. This is the expensive half — sampleHeight runs about
+       six microseconds a call and there are thirty thousand of them. */
+    if (job.row < n) {
+      const rows = Math.min(n - job.row, NEAR_HEIGHT_ROWS_PER_FRAME);
+      for (let rr = 0; rr < rows; rr += 1) {
+        const j = job.row + rr;
+        const wz = job.z - half + j * step;
+        for (let i = 0; i < n; i += 1) {
+          heights[j * n + i] = this.sampleHeight(job.x - half + i * step, wz);
+        }
+      }
+      job.row += rows;
+      return;
+    }
+
+    /* Phase two: shading and normals, spread the same way. Normals come from
+       the height field directly rather than computeVertexNormals(), which
+       would be one long stall at the end and no more accurate. */
+    const colors = this.nearScratchC;
+    const normals = this.nearScratchN;
+    const floorC = _nearFloor;
+    const rockC = _nearRock;
+
+    if (job.shade < n) {
+      const rows = Math.min(n - job.shade, NEAR_SHADE_ROWS_PER_FRAME);
+      for (let rr = 0; rr < rows; rr += 1) {
+        const j = job.shade + rr;
+        const jm = Math.max(j - 1, 0);
+        const jp = Math.min(j + 1, n - 1);
+        for (let i = 0; i < n; i += 1) {
+          const k = j * n + i;
+          const im = Math.max(i - 1, 0);
+          const ip = Math.min(i + 1, n - 1);
+          const hx = heights[j * n + ip] - heights[j * n + im];
+          const hz = heights[jp * n + i] - heights[jm * n + i];
+          const span = step * 2;
+
+          // Analytic normal for a heightfield: the gradient, flipped.
+          let nx = -hx;
+          let ny = span;
+          let nz = -hz;
+          const inv = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+          normals[k * 3] = nx * inv;
+          normals[k * 3 + 1] = ny * inv;
+          normals[k * 3 + 2] = nz * inv;
+
+          const depth = -heights[k];
+          const slope = clamp01(Math.sqrt(hx * hx + hz * hz) / (step * 2.4));
+          rampColor(FLOOR_RAMP, depth, floorC);
+          rampColor(ROCK_RAMP, depth, rockC);
+          floorC.lerp(rockC, smoothstep(0.18, 0.7, slope));
+
+          const wx = job.x - half + i * step;
+          const wz = job.z - half + j * step;
+          const mottle = fbm2D((this.seed + 991) >>> 0, wx * 0.022, wz * 0.022, 2);
+          floorC.multiplyScalar(clamp(1 + mottle * 0.28, 0.55, 1.45));
+
+          colors[k * 3] = floorC.r;
+          colors[k * 3 + 1] = floorC.g;
+          colors[k * 3 + 2] = floorC.b;
+        }
+      }
+      job.shade += rows;
+      return;
+    }
+
+    /* Phase three: publish the whole tile at once. A partly written tile would
+       visibly ripple, and heightAt would read a floor that is not there. */
+    const geo = this.nearGeo;
+    const pos = geo.attributes.position;
+    for (let k = 0; k < heights.length; k += 1) pos.setY(k, heights[k]);
+    geo.attributes.color.array.set(colors);
+    geo.attributes.normal.array.set(normals);
+    pos.needsUpdate = true;
+    geo.attributes.color.needsUpdate = true;
+    geo.attributes.normal.needsUpdate = true;
+
+    if (!this.nearHeights) this.nearHeights = new Float32Array(heights.length);
+    this.nearHeights.set(heights);
+
+    this.near.position.set(job.x, 0, job.z);
+    this.nearCentre.set(job.x, job.z);
+    this.nearJob = null;
+  }
+
+  _updateNear(cam) {
+    if (!this.near) return;
+    // Re-centre once the camera leaves the comfortable middle of the tile.
+    const drift = Math.max(Math.abs(cam.x - this.nearCentre.x), Math.abs(cam.z - this.nearCentre.y));
+    if (!this.nearJob && drift > this.nearHalf * 0.34) this._startNearJob(cam.x, cam.z);
+    if (this.nearJob) this._advanceNearJob();
   }
 
   /* Bilinear read of the grid the mesh was built from. Fast enough to call a
      few hundred times a frame, and exact against what you can see. */
   heightAt(x, z) {
+    /* The detail tile is sampled at 10 m and the backdrop sheet at 40 m, so
+       inside the tile we read that instead: the coarse grid is off by up to
+       two metres, which is the difference between flying over the seabed and
+       clipping through the seabed you can see. */
+    const nh = this.nearHeights;
+    if (nh) {
+      const n = this.nearN;
+      const step = this.nearStep;
+      const fx = (x - this.nearCentre.x + this.nearHalf) / step;
+      const fz = (z - this.nearCentre.y + this.nearHalf) / step;
+      if (fx >= 0 && fz >= 0 && fx <= n - 1 && fz <= n - 1) {
+        const i = fx | 0;
+        const j = fz | 0;
+        const i1 = i + 1 < n ? i + 1 : i;
+        const j1 = j + 1 < n ? j + 1 : j;
+        const tx = fx - i;
+        const tz = fz - j;
+        const a = nh[j * n + i];
+        const b = nh[j * n + i1];
+        const c = nh[j1 * n + i];
+        const d = nh[j1 * n + i1];
+        const top = a + (b - a) * tx;
+        return top + ((c + (d - c) * tx) - top) * tz;
+      }
+    }
+
     const h = this.heights;
     if (!h) return this.sampleHeight(x, z);
     const n = this.gridN;
@@ -1569,6 +1852,7 @@ export class SeaWorld {
 
     const depth = Math.max(0, -cam.y);
 
+    this._updateNear(cam);
     this._updateSnow(dt, cam, depth);
     this._updateSurface(dt, cam, depth);
     this._updateRays(dt, cam, depth);

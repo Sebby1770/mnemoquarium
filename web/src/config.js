@@ -3,9 +3,12 @@
    Y is up; the surface is y = 0; depth is -y. */
 
 export const SEA = {
-  worldRadius: 1500,        // soft boundary — past this the current shoves you back
-  terrainSize: 3400,        // heightfield extent (x and z)
-  terrainSegments: 220,     // heightfield resolution
+  worldRadius: 4200,        // soft boundary — past this the current shoves you back
+  terrainSize: 9600,        // heightfield extent (x and z)
+  terrainSegments: 220,     // resolution of the coarse skirt behind the chunks
+  chunkSize: 620,           // one streamed terrain tile, metres
+  chunkSegments: 72,        // resolution within a tile
+  chunkRadius: 3,           // tiles kept around the camera in each direction
   surfaceY: 0,
   maxDepth: 1600,
   stationPos: [0, -30, 0],  // the Hull — dock, market, drydock
@@ -89,6 +92,46 @@ export const ZONES = [
     blurb: "where the tank keeps what it could not hold",
   },
 ];
+
+/* The look of the water itself. Absorption is per-channel and in units of
+   1/metre: red dies within a few metres, blue carries. That single fact is
+   most of what makes water read as water, so it is tuned here rather than
+   buried in the shader. */
+export const WATER = {
+  absorb: {
+    shelf:    [0.030, 0.0125, 0.0072],
+    kelp:     [0.042, 0.0180, 0.0130],
+    twilight: [0.055, 0.0250, 0.0160],
+    midnight: [0.070, 0.0360, 0.0250],
+    abyss:    [0.090, 0.0520, 0.0400],
+  },
+  // How much light the water throws back at you — the colour of distance.
+  scatter: {
+    shelf:    0x3f93a6,
+    kelp:     0x246b63,
+    twilight: 0x14384f,
+    midnight: 0x071522,
+    abyss:    0x05040d,
+  },
+  causticStrength: 0.32,    // on the seabed, in the shallows
+  causticScale: 0.085,
+  causticFadeStart: 20,     // metres: full strength above this
+  causticFadeEnd: 165,      // metres: gone by here
+  murkBase: 1,
+};
+
+export const POST = {
+  enabled: true,
+  bloomThreshold: 0.72,
+  bloomStrength: 0.85,
+  bloomRadius: 1.1,
+  bloomScale: 0.5,          // render bloom at half resolution
+  vignette: 0.42,
+  grain: 0.035,
+  aberration: 0.0016,       // grows with depth and with damage
+  exposure: 1.02,
+  maxPixelRatio: 2,
+};
 
 export const RARITY = {
   common:    { label: "common",    multiplier: 1.0,  color: 0x9fb4c4, weight: 60 },

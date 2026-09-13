@@ -45,8 +45,18 @@ and much worse.
 
 ### The water column
 
-The seabed slopes from 62 m under the station to 1,400 m at the rim, so every
-band is reached by swimming, not by a menu.
+The sea is about 4 km across and it is a **margin, not a bowl**: the phrase
+picks a direction, and that side is a broad continental shelf you can work for
+a long time while the opposite side falls away early into the basin. At 2 km
+out the floor might be 200 m under you or 1,300 m, depending only on which way
+you went.
+
+Things worth navigating by: a **shelf break** where the shelf gives up — over
+200 m of drop in 120 m of travel, running across the map as a coastline you can
+follow; two **trench arms** that meet; and a dozen **seamounts**, some rising
+400 m off the basin floor and breaking up out of the dark.
+
+Every band is reached by swimming, not by a menu.
 
 | band | depth | what it costs you |
 | --- | --- | --- |
@@ -102,6 +112,7 @@ python3 -m http.server 8765 --directory web
 ```
 
 - `web/engine.js` — the genetics: species, genomes, inheritance, mutation
+- `web/src/water.js` — the underwater light model: absorption, scattering, caustics
 - `web/src/ecology.js` — phrase to species to price
 - `web/src/world.js` — seabed, depth bands, flora, the Hull
 - `web/src/sub.js` — flight, systems, pressure, the cockpit
