@@ -12,6 +12,7 @@
 
 import * as THREE from "three";
 import { SEA, ZONES, zoneForDepth } from "./config.js";
+import { mergeGeometries } from "./geo.js";
 import {
   TAU,
   clamp,
@@ -386,6 +387,62 @@ function buildWorms(rng, tubeLow, tubeHigh) {
 }
 
 /* A wreck. Nobody says whose. Half a hull, some ribs, a mast that went over. */
+/* A coral tower: a stack of lobes narrowing upward, with a few arms off it.
+   Unit height, so an instance scale is its height in metres. */
+function buildCoralTower(rng) {
+  const parts = [];
+  const lobes = 5 + rng.randrange(4);
+  for (let i = 0; i < lobes; i += 1) {
+    const t = i / lobes;
+    const r = lerp(0.30, 0.08, t) * randRange(rng, 0.8, 1.25);
+    const lobe = jitterGeometry(new THREE.IcosahedronGeometry(r, 1), rng, 0.3);
+    lobe.scale(1, randRange(rng, 0.7, 1.3), 1);
+    lobe.translate(randRange(rng, -0.06, 0.06), t * 0.92 + r * 0.5, randRange(rng, -0.06, 0.06));
+    parts.push(lobe);
+  }
+  // A couple of arms, so the silhouette is not a cone.
+  const arms = 1 + rng.randrange(3);
+  for (let i = 0; i < arms; i += 1) {
+    const a = rng.random() * TAU;
+    const h = randRange(rng, 0.3, 0.66);
+    const arm = jitterGeometry(new THREE.IcosahedronGeometry(randRange(rng, 0.09, 0.16), 1), rng, 0.3);
+    arm.scale(1, randRange(rng, 1.4, 2.6), 1);
+    arm.translate(Math.cos(a) * randRange(rng, 0.16, 0.3), h, Math.sin(a) * randRange(rng, 0.16, 0.3));
+    parts.push(arm);
+  }
+  const merged = mergeGeometries(parts);
+  for (const g of parts) g.dispose();
+  return paintByHeight(merged, 0x24202c, rng.random() < 0.5 ? 0xd4816f : 0x79c9b0, 0.26);
+}
+
+/* A curtain of weed: a handful of tall ribbons on one base, so a patch of them
+   reads as something to push through rather than something to look at. */
+function buildWeedCurtain(rng) {
+  const parts = [];
+  const blades = 7 + rng.randrange(6);
+  for (let i = 0; i < blades; i += 1) {
+    const h = randRange(rng, 0.55, 1);
+    const w = randRange(rng, 0.035, 0.075);
+    const geo = new THREE.PlaneGeometry(w, h, 1, 5);
+    geo.translate(0, h / 2, 0);
+    const pos = geo.attributes.position;
+    const lean = randRange(rng, 0.1, 0.3);
+    const twist = rng.random() * TAU;
+    for (let k = 0; k < pos.count; k += 1) {
+      const t = clamp01(pos.getY(k) / h);
+      pos.setX(k, pos.getX(k) * (0.5 + 0.9 * Math.sin(Math.pow(t, 0.7) * Math.PI * 0.9)));
+      pos.setZ(k, pos.getZ(k) + t * t * h * lean);
+    }
+    geo.rotateY(twist);
+    geo.translate(randRange(rng, -0.17, 0.17), 0, randRange(rng, -0.17, 0.17));
+    geo.computeVertexNormals();
+    parts.push(geo);
+  }
+  const merged = mergeGeometries(parts);
+  for (const g of parts) g.dispose();
+  return paintByHeight(merged, 0x14301d, 0x74a05c, 0.2);
+}
+
 function buildWreck(rng) {
   const parts = [];
   const hull = new THREE.CylinderGeometry(3.2, 4.1, 19, 10, 1, true);
@@ -1109,6 +1166,7 @@ export class SeaWorld {
     this._buildWormField();
     this._buildPolypField();
     this._buildRockField();
+    this._buildGiantField();
     this._buildWreckField();
   }
 
@@ -1426,6 +1484,129 @@ export class SeaWorld {
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       root.add(mesh);
     }
+    this._addLayer(root, 0, SEA.maxDepth + 400);
+  }
+
+  /* The big stuff. Everything else on the floor is texture you fly over; these
+     are objects you fly *between* — boulders taller than the boat, coral towers
+     you can lose a shark behind, and curtains of weed thick enough that going
+     through is a decision. Each shape is one instanced draw call, so the whole
+     field costs four. */
+  _buildGiantField() {
+    const rng = makeRng(this.seed, "giants");
+    const root = new THREE.Group();
+    root.name = "giants";
+
+    const rockMat = this._mat(new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.96, metalness: 0, fog: true,
+    }));
+    const coralMat = this._mat(new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.82, metalness: 0, side: THREE.DoubleSide, fog: true,
+    }));
+    const weedMat = this._mat(new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.6, metalness: 0, side: THREE.DoubleSide, fog: true,
+    }));
+    if (this.game.water) {
+      this.game.water.register(rockMat);
+      this.game.water.register(coralMat);
+      this.game.water.register(weedMat);
+    }
+
+    /* --- boulders: 10 to 30 metres, leaning, in loose clusters ------------ */
+    {
+      const geo = this._geo(paintByHeight(
+        jitterGeometry(new THREE.IcosahedronGeometry(1, 1), rng, 0.42), 0x0b0e13, 0x6f6e64, 0.22));
+      const per = 300;
+      const mesh = new THREE.InstancedMesh(geo, rockMat, per);
+      mesh.frustumCulled = false;
+      let i = 0;
+      // Clusters, not confetti: a gap between two boulders is worth flying through.
+      this._scatter(rng, 84, 8, SEA.maxDepth, 0.5, 90, (cx, cy, cz, depth) => {
+        const lumps = 2 + rng.randrange(4);
+        for (let k = 0; k < lumps && i < per; k += 1) {
+          const a = rng.random() * TAU;
+          const rad = Math.sqrt(rng.random()) * 34;
+          const x = cx + Math.cos(a) * rad;
+          const z = cz + Math.sin(a) * rad;
+          const y = this.heightAt(x, z);
+          const sc = randRange(rng, 5.5, 15);
+          _e1.set(randRange(rng, -0.5, 0.5), rng.random() * TAU, randRange(rng, -0.5, 0.5));
+          _q1.setFromEuler(_e1);
+          _v1.set(x, y - sc * randRange(rng, 0.18, 0.42), z);
+          _v2.set(sc * randRange(rng, 0.8, 1.35), sc * randRange(rng, 0.75, 1.6), sc * randRange(rng, 0.8, 1.35));
+          _m1.compose(_v1, _q1, _v2);
+          mesh.setMatrixAt(i, _m1);
+          rampColor(ROCK_RAMP, depth, _c1);
+          _c1.multiplyScalar(randRange(rng, 1.4, 2.4));
+          mesh.setColorAt(i, _c1);
+          i += 1;
+        }
+      });
+      mesh.count = i;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      root.add(mesh);
+    }
+
+    /* --- coral towers: columns on the shelf, 14 to 40 metres -------------- */
+    {
+      const geo = this._geo(buildCoralTower(rng));
+      const per = 190;
+      const mesh = new THREE.InstancedMesh(geo, coralMat, per);
+      mesh.frustumCulled = false;
+      let i = 0;
+      this._scatter(rng, per, 12, 320, 0.74, 80, (x, y, z) => {
+        const sc = randRange(rng, 14, 40);
+        _e1.set(randRange(rng, -0.08, 0.08), rng.random() * TAU, randRange(rng, -0.08, 0.08));
+        _q1.setFromEuler(_e1);
+        _v1.set(x, y - 1.5, z);
+        _v2.set(sc * randRange(rng, 0.5, 0.85), sc, sc * randRange(rng, 0.5, 0.85));
+        _m1.compose(_v1, _q1, _v2);
+        mesh.setMatrixAt(i, _m1);
+        _c1.setHex(0xffffff).multiplyScalar(randRange(rng, 0.65, 1.3));
+        mesh.setColorAt(i, _c1);
+        i += 1;
+      });
+      mesh.count = i;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      root.add(mesh);
+    }
+
+    /* --- weed curtains: dense patches you push through -------------------- */
+    {
+      const geo = this._geo(buildWeedCurtain(rng));
+      const per = 460;
+      const mesh = new THREE.InstancedMesh(geo, weedMat, per);
+      mesh.frustumCulled = false;
+      let i = 0;
+      this._scatter(rng, 100, 10, 420, 0.8, 70, (cx, cy, cz) => {
+        const blades = 3 + rng.randrange(4);
+        for (let k = 0; k < blades && i < per; k += 1) {
+          const a = rng.random() * TAU;
+          const rad = Math.sqrt(rng.random()) * 26;
+          const x = cx + Math.cos(a) * rad;
+          const z = cz + Math.sin(a) * rad;
+          const y = this.heightAt(x, z);
+          const sc = randRange(rng, 12, 27);
+          _e1.set(0, rng.random() * TAU, randRange(rng, -0.12, 0.12));
+          _q1.setFromEuler(_e1);
+          _v1.set(x, y - 0.6, z);
+          _v2.set(sc * randRange(rng, 0.7, 1.2), sc, sc * randRange(rng, 0.7, 1.2));
+          _m1.compose(_v1, _q1, _v2);
+          mesh.setMatrixAt(i, _m1);
+          _c1.setHex(0xffffff).multiplyScalar(randRange(rng, 0.55, 1.25));
+          mesh.setColorAt(i, _c1);
+          i += 1;
+        }
+      });
+      mesh.count = i;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      root.add(mesh);
+    }
+
+    // Big enough to be worth seeing from any depth the player can survive.
     this._addLayer(root, 0, SEA.maxDepth + 400);
   }
 

@@ -2,6 +2,40 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.2.0] - 2026-09-13
+
+### Added
+- **Four new things that want you dead.**
+  - **Static Lamprey** — arrives as a knot of six to eleven. One is nothing,
+    which is the point; they are what the Sonar Lance is for.
+  - **Trapjaw** — lies flat in the silt wearing the colours of the floor and
+    does not move at all until you are within about fifty metres, then lunges
+    at four times its cruising speed. "the floor opens. it was never the floor."
+  - **Gulper** — mostly mouth, with an animal apologising behind it. A thin
+    line of light down the tail is the only warning.
+  - **Hull-Light Siren** — hangs a slowly turning docking ring in the abyss,
+    the same warm colour as the Hull's. There is no dock.
+- **Big scenery you fly between rather than over**: boulder clusters 10-30 m
+  across, coral towers up to 40 m on the shelf, and curtains of weed thick
+  enough that going through is a decision. Four instanced draw calls for the
+  whole field.
+
+### Changed
+- **A much wider view out of the boat.** Field of view raised from 68 to 78,
+  and the cockpit window is now cut to the actual frustum rather than pinned to
+  fixed coordinates — so it frames whatever screen you are on instead of eating
+  a chunk of it, and the two heavy diagonal struts are down to slivers in the
+  top corners. It re-cuts itself on resize and when boost widens the view.
+- **The drydock is a list, not a wall of cards.** One row per refit carrying
+  only what you need to decide — what it is, where it is now, where it goes,
+  what it costs — with the ones you can actually afford sorted to the top and
+  the rest dimmed.
+- **The menu is quieter.** One line says what the sea is ("5 species · Sunlit
+  Shelf down to The Forgetting · best 48 cr"), the species cards are tighter,
+  and the controls and the phrase box fold away so the eye lands on Dive.
+- Hostile budgets raised in the three deepest bands, and the spawn tables
+  rebalanced so every band has something new in it.
+
 ## [1.1.0] - 2026-09-13
 
 ### Added

@@ -40,6 +40,8 @@ const BUMP_THRESHOLD = 2.2;        // m/s under which a scrape is only a scrape
 const BUMP_COOLDOWN = 0.34;
 const PRESSURE_WARN = 0.88;        // fraction of the rating where the casing starts talking
 const PRESSURE_CLEAR = 0.80;       // hysteresis, so the warning does not stutter
+const COCKPIT_Z = 0.5;   // how far the window sits in front of the eye
+
 const DOCK_HOLD = 0.55;            // seconds of held E on the clamps
 const CARGO_TONS_PER_ITEM = 0.35;  // a netted thing plus its water
 const FOV_SPEED_GAIN = 7;
@@ -160,6 +162,7 @@ export class Submarine {
     this.buildLights();
     this.buildCockpit();
     this.attachCamera();
+    this.layoutCockpit();
     this.bindInput();
 
     this.applyStats();
@@ -256,18 +259,19 @@ export class Submarine {
       return mesh;
     };
 
-    // Window rim: top brow, two cheeks, and a deeper sill under the glass.
-    slab(frameMat, 1.9, 0.14, 0.10, 0, 0.335, -0.5);
-    slab(frameMat, 0.16, 0.95, 0.10, -0.62, 0.02, -0.5);
-    slab(frameMat, 0.16, 0.95, 0.10, 0.62, 0.02, -0.5);
-    slab(frameMat, 1.9, 0.10, 0.14, 0, -0.345, -0.5);
-
-    // Corner struts. They live in the upper corners so the reticle stays clean.
-    slab(trimMat, 0.045, 0.40, 0.045, -0.44, 0.20, -0.47, 0.72);
-    slab(trimMat, 0.045, 0.40, 0.045, 0.44, 0.20, -0.47, -0.72);
-
-    // Instrument lip: a shelf under the window with a thin lit edge.
-    slab(trimMat, 1.34, 0.09, 0.30, 0, -0.40, -0.36, 0);
+    /* Window rim: top brow, two cheeks, a sill. These are laid out against the
+       actual frustum in layoutCockpit() rather than pinned to fixed numbers,
+       so the window frames whatever aspect the player's screen is instead of
+       eating a chunk of it on a wide monitor. */
+    this.frame = {
+      brow: slab(frameMat, 1, 0.12, 0.10, 0, 0, -COCKPIT_Z),
+      left: slab(frameMat, 0.13, 1, 0.10, 0, 0, -COCKPIT_Z),
+      right: slab(frameMat, 0.13, 1, 0.10, 0, 0, -COCKPIT_Z),
+      sill: slab(frameMat, 1, 0.09, 0.13, 0, 0, -COCKPIT_Z),
+      strutL: slab(trimMat, 0.03, 0.22, 0.03, 0, 0, -COCKPIT_Z + 0.03, 0.72),
+      strutR: slab(trimMat, 0.03, 0.22, 0.03, 0, 0, -COCKPIT_Z + 0.03, -0.72),
+      lip: slab(trimMat, 1.1, 0.08, 0.26, 0, 0, -0.36, 0),
+    };
     const lipMat = new THREE.MeshBasicMaterial({
       color: 0x2a6c7f,
       transparent: true,
@@ -275,15 +279,15 @@ export class Submarine {
       fog: false,
     });
     this.disposables.push(lipMat);
-    slab(lipMat, 1.20, 0.012, 0.012, 0, -0.352, -0.47, 0);
+    this.frame.lipEdge = slab(lipMat, 1.0, 0.011, 0.011, 0, 0, -COCKPIT_Z + 0.03, 0);
 
     /* Two lamps on the lip. They are the only piece of HUD that is actually in
        the world, and they are the first thing you notice going wrong. */
     this.hullLampMat = new THREE.MeshBasicMaterial({ color: 0x6fe3a0, fog: false });
     this.cellLampMat = new THREE.MeshBasicMaterial({ color: 0x63b6ff, fog: false });
     this.disposables.push(this.hullLampMat, this.cellLampMat);
-    slab(this.hullLampMat, 0.035, 0.016, 0.01, -0.20, -0.383, -0.44, 0);
-    slab(this.cellLampMat, 0.035, 0.016, 0.01, -0.13, -0.383, -0.44, 0);
+    this.frame.hullLamp = slab(this.hullLampMat, 0.032, 0.014, 0.01, 0, 0, -COCKPIT_Z + 0.06, 0);
+    this.frame.cellLamp = slab(this.cellLampMat, 0.032, 0.014, 0.01, 0, 0, -COCKPIT_Z + 0.06, 0);
 
     /* Glass. Two long additive smears rather than a full pane, so the view does
        not wash out but the window still has a surface. */
@@ -302,7 +306,7 @@ export class Submarine {
        a bright shelf and reads as a grey bar in the abyss, because there is no
        daylight down there for the glass to catch. */
     this.glassMat = glassMat;
-    for (const [w, h, x, y, r] of [[1.1, 0.035, -0.16, 0.2, 0.38], [0.5, 0.018, 0.16, 0.05, 0.38]]) {
+    for (const [w, h, x, y, r] of [[1.0, 0.028, -0.28, 0.26, 0.42], [0.42, 0.014, 0.30, 0.13, 0.42]]) {
       const streak = new THREE.Mesh(glassGeom, glassMat);
       streak.scale.set(w, h, 1);
       streak.position.set(x, y, -0.46);
@@ -323,6 +327,44 @@ export class Submarine {
   /* ====================================================================== */
   /* input                                                                  */
   /* ====================================================================== */
+
+  /* Fit the window to the frustum. Everything sits just outside the visible
+     edge, so the frame reads as a window rather than as a letterbox, and a
+     wider screen genuinely shows more sea instead of more cockpit. */
+  layoutCockpit() {
+    const cam = this.game.camera;
+    const f = this.frame;
+    if (!cam || !cam.isPerspectiveCamera || !f) return;
+
+    const halfH = Math.tan((cam.fov * Math.PI) / 360) * COCKPIT_Z;
+    const halfW = halfH * Math.max(0.5, cam.aspect);
+
+    // A hair of overlap so no sliver of scene leaks past the frame edge.
+    const bite = 0.015;
+    const spanW = halfW * 2 + 0.6;
+    const spanH = halfH * 2 + 0.6;
+
+    f.brow.scale.x = spanW;
+    f.brow.position.set(0, halfH + f.brow.scale.y / 2 - bite, -COCKPIT_Z);
+    f.sill.scale.x = spanW;
+    f.sill.position.set(0, -halfH - f.sill.scale.y / 2 + bite, -COCKPIT_Z);
+    f.left.scale.y = spanH;
+    f.left.position.set(-halfW - f.left.scale.x / 2 + bite, 0, -COCKPIT_Z);
+    f.right.scale.y = spanH;
+    f.right.position.set(halfW + f.right.scale.x / 2 - bite, 0, -COCKPIT_Z);
+
+    // Struts clip only the extreme corners now, well clear of the reticle.
+    f.strutL.position.set(-halfW + 0.10, halfH - 0.07, -COCKPIT_Z + 0.03);
+    f.strutR.position.set(halfW - 0.10, halfH - 0.07, -COCKPIT_Z + 0.03);
+
+    const lipW = Math.min(spanW * 0.72, halfW * 1.5);
+    f.lip.scale.x = lipW;
+    f.lip.position.set(0, -halfH - 0.035, -0.36);
+    f.lipEdge.scale.x = lipW * 0.9;
+    f.lipEdge.position.set(0, -halfH + 0.008, -COCKPIT_Z + 0.03);
+    f.hullLamp.position.set(-lipW * 0.17, -halfH - 0.028, -COCKPIT_Z + 0.06);
+    f.cellLamp.position.set(-lipW * 0.11, -halfH - 0.028, -COCKPIT_Z + 0.06);
+  }
 
   bindInput() {
     this.onKeyDown = (e) => this.handleKeyDown(e);
@@ -1116,6 +1158,9 @@ export class Submarine {
       const next = damp(cam.fov, target, 3.6, dt);
       if (Math.abs(next - cam.fov) > 0.01) {
         cam.fov = next;
+        // The window is fitted to the frustum, so a boost that widens the view
+        // has to widen the window with it.
+        this.layoutCockpit();
         cam.updateProjectionMatrix();
       }
     }

@@ -68,11 +68,18 @@ Every band is reached by swimming, not by a menu.
 
 ### What hunts you
 
-Reef sharks run straight at you. Glass squid clamp on and drain the cell.
-Lantern anglers hang still in the dark with a light on. A leviathan is longer
-than your lamps reach. A Forgetting Wraith takes a specimen out of your hold
-*and out of your record*. The Kraken of Static lives in the abyss and is not a
-fair fight yet.
+Reef sharks run straight at you. **Static lamprey** arrive as a knot of ten and
+are only a problem together. Glass squid clamp on and drain the cell. Lantern
+anglers hang still in the dark with a light on. A **trapjaw** lies flat in the
+silt wearing the colours of the floor and does not move until you are close.
+A **gulper** is mostly mouth. A leviathan is longer than your lamps reach. A
+**hull-light siren** hangs a slowly turning docking ring in the abyss, the same
+warm colour as the Hull's — there is no dock. A Forgetting Wraith takes a
+specimen out of your hold *and out of your record*. The Kraken of Static lives
+down there too and is not a fair fight yet.
+
+Between you and them: boulder clusters, coral towers up to 40 m, and curtains
+of weed thick enough to lose something in.
 
 ## Where the fish come from
 
