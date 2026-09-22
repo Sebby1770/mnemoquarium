@@ -26,7 +26,8 @@ the bottom of the menu takes any phrase you like.
 | mouse | look (click once to lock) |
 | `LMB` | fire |
 | `RMB` | capture beam — hold it on a fish |
-| `1` `2` `3` | harpoon / torpedo / sonar lance |
+| `4` | drift net — one throw takes a whole shoal |
+| `1` `2` `3` `4` | harpoon / torpedo / sonar lance / drift net |
 | `F` | floodlights |
 | `R` | sonar ping |
 | `E` | dock at the Hull |
@@ -80,6 +81,15 @@ down there too and is not a fair fight yet.
 
 Between you and them: boulder clusters, coral towers up to 40 m, and curtains
 of weed thick enough to lose something in.
+
+### Places worth finding
+
+Eighteen landmarks, placed by the phrase, from 57 m down to 1,400: wrecks
+broken in two with a gap you can fly through, hydrothermal vent fields, whale
+falls with the scavengers still on them, rock arches, kelp groves far deeper
+than kelp belongs, drowned lights still turning, and boneyards of shells and
+anchors. Reaching one for the first time pays a survey fee that scales with
+how deep you had to go to do it.
 
 ## Where the fish come from
 

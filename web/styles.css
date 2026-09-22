@@ -1137,6 +1137,38 @@ body[data-hold="open"] #panel-cargo { display: grid; }
   .station-foot { flex-direction: column; align-items: stretch; }
 }
 
+/* Short screens — a laptop with a browser chrome, or a window someone has
+   dragged small. The HUD is anchored to four corners and a centre, so when the
+   viewport loses height those anchors walk into each other. Everything gets a
+   size down and the log, which is the most expendable, goes first. */
+@media (max-height: 700px) {
+  :root { --hud-gap: 0.65rem; }
+  #gauges { width: min(26vw, 210px); gap: 0.28rem; }
+  .gauge { padding: 0.2rem 0.5rem; grid-template-columns: 2.6rem 1fr auto; }
+  .gauge-value { font-size: 0.68rem; min-width: 3rem; }
+  .instrument { padding: 0.2rem 0.55rem; }
+  .instrument strong { font-size: 0.84rem; }
+  #log { bottom: calc(var(--hud-gap) + 6rem); width: min(32vw, 320px); }
+  .log-line { font-size: 0.7rem; }
+  #sonar-note { bottom: calc(var(--hud-gap) + 4rem); }
+}
+
+@media (max-height: 560px) {
+  #log { display: none; }
+  #objective { display: none; }
+  #compass { height: 28px; }
+  .weapon { padding: 0.22rem 0.5rem; }
+  .wpn-name { font-size: 0.68rem; }
+}
+
+/* Very short and narrow at once: keep only what the player is steering by. */
+@media (max-height: 470px), (max-width: 460px) {
+  #instruments { grid-template-columns: repeat(2, minmax(72px, auto)); gap: 0.25rem; }
+  #zone-plate { min-width: 0; }
+  #readout-zone-blurb { display: none; }
+  #sonar-note { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

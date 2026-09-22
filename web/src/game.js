@@ -18,6 +18,7 @@ import { CreatureManager } from "./creatures.js";
 import { Combat } from "./combat.js";
 import { Audio } from "./audio.js";
 import { Water } from "./water.js";
+import { Landmarks } from "./landmarks.js";
 import { HUD } from "./hud.js";
 
 const MAX_DT = 1 / 20;         // a long frame must not teleport the boat
@@ -77,6 +78,7 @@ export class Game {
     this.sub = new Submarine(this);
     this.fish = new FishManager(this);
     this.creatures = new CreatureManager(this);
+    this.landmarks = new Landmarks(this);
     this.combat = new Combat(this);
     this.audio = new Audio(this);
     this.hud = new HUD(this);
@@ -187,6 +189,7 @@ export class Game {
       this.creatures.update(dt * 0.2);
       this.combat.update(dt);
     }
+    this.landmarks.update(dt);
     this.water.update(dt);
     this.vfx.update(dt);
     this.audio.update(dt);
@@ -491,7 +494,7 @@ export class Game {
     document.removeEventListener("visibilitychange", this._onVisibility);
     window.removeEventListener("pagehide", this._onUnload);
 
-    for (const system of [this.hud, this.audio, this.combat, this.creatures, this.fish, this.sub, this.vfx, this.world, this.water, this.ecology]) {
+    for (const system of [this.hud, this.audio, this.combat, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.water, this.ecology]) {
       try {
         if (system && system.dispose) system.dispose();
       } catch (err) {
