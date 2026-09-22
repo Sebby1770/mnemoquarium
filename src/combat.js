@@ -1,25 +1,36 @@
-/* Three ways to argue with the dark, and one quiet way to fill the hold.
+/* Three ways to argue with the dark, and two ways to fill the hold.
 
-   Everything that leaves the boat is pooled: harpoon bolts and torpedoes are
-   allocated once at construction and recycled, so a long firefight never asks
-   the collector for anything. Hit tests run against the *segment* travelled in
-   a frame (creatures.raycast / fish.raycast) rather than the point the
-   projectile happens to land on, because a 95 m/s bolt moves five metres
+   Everything that leaves the boat is pooled: harpoon bolts, torpedoes and nets
+   are allocated once at construction and recycled, so a long firefight never
+   asks the collector for anything. Hit tests run against the *segment*
+   travelled in a frame (creatures.raycast / fish.raycast) rather than the point
+   the projectile happens to land on, because a 95 m/s bolt moves five metres
    between frames and would otherwise walk straight through a shark.
 
-   The capture beam lives here too. It is not a weapon — it is the only thing in
-   the game that makes money — but it hangs off the same trigger hand, so it
-   shares the muzzle maths and the battery bookkeeping. */
+   The capture beam lives here too. It is not a weapon — it was for a long time
+   the only thing in the game that made money — but it hangs off the same
+   trigger hand, so it shares the muzzle maths and the battery bookkeeping.
+
+   The drift net is the beam's argument with itself. The beam takes one fish at
+   a time and asks you to hold still while something with teeth decides what it
+   thinks of that; the net takes a whole shoal for one throw and one cell's
+   worth of charge, and then makes you wait three and a half seconds to be
+   wrong again. It flies its own way — slowing, sinking, opening — so it gets a
+   step function of its own rather than sharing the ballistics above. */
 
 import * as THREE from "three";
 import { SEA, WEAPONS } from "./config.js";
-import { clamp01, damp, lerp } from "./util.js";
+import { TAU, clamp01, damp, formatCredits, lerp, smoothstep } from "./util.js";
 
-/* 1 / 2 / 3 in the order sub.js sends them. */
-const WEAPON_ORDER = ["harpoon", "torpedo", "pulse"];
+/* 1 / 2 / 3 / 4 in the order sub.js sends them. The net is last because it is
+   the one you buy, not the one the boat came with. */
+const WEAPON_ORDER = ["harpoon", "torpedo", "pulse", "net"];
 
 const HARPOON_POOL = 28;
 const TORPEDO_POOL = 8;
+/* One throw is in the water for less time than the tube takes to reload, so
+   four is already slack; it only matters when the pool is stolen from. */
+const NET_POOL = 4;
 const TRAIL_POINTS = 12;
 
 /* The bow tube sits a little below the window so the bolt is visible leaving
@@ -47,6 +58,45 @@ const DENY_INTERVAL = 0.5;          // do not machine-gun the refusal noise
 const TERRAIN_STEP = 2.0;           // seabed sampling stride along a step
 const FISH_PIERCE_TIME = 0.12;      // ignore fish briefly after punching one
 
+/* The net, in feel numbers. The balance numbers are elsewhere on purpose:
+   WEAPONS.net owns speed, life, cooldown and cost, and progression owns how
+   wide it opens and how much it can hold. Nothing here changes with a mark. */
+const NET_SPOKES = 12;                  // cords from the centre to the rim
+const NET_RINGS = [0.3, 0.56, 0.8, 1];  // cross-cords, in fractions of the rim
+const NET_BAG_BACK = 0.45;              // how far the bag trails the rim
+const NET_BAG_FRONT = 0.1;              // and how far the weighted rim leads
+const NET_BUNDLE = 0.085;               // how small it is leaving the hand
+const NET_OPEN_TIME = 0.24;             // bundle to full spread
+const NET_TRIGGER_OPEN = 0.4;           // it cannot catch what it has not opened for
+const NET_SETTLE = 0.16;                // fly on a beat past first contact
+const NET_CLOSE_TIME = 0.5;             // the drawstring
+/* Drag only once it is open, and gently: at 1.5 with a baseline of 1 the net
+   shed ninety-two per cent of its speed every second and stopped twelve metres
+   out, which meant it could never reach the shoal you threw it at. */
+const NET_DRAG = 0.9;
+const NET_SINK = 3.2;                   // m/s^2 — the rim is weighted
+const NET_SPIN = 1.1;                   // lazy roll, so it never reads as a decal
+const NET_LINE_ALPHA = 0.85;
+const NET_BAG_ALPHA = 0.075;
+const NET_CHIME_GAP = 0.13;             // one bell per fish, counted out
+const NET_SILT = 0xbfae90;              // what the floor gives up when hit
+
+/* The log counts out loud to a dozen; past that the number is the point. */
+const COUNT_WORDS = [
+  "none", "one", "two", "three", "four", "five", "six",
+  "seven", "eight", "nine", "ten", "eleven", "twelve",
+];
+
+function countWord(n) {
+  return n >= 0 && n < COUNT_WORDS.length ? COUNT_WORDS[n] : String(n);
+}
+
+/* A full net has to decide what it keeps, and the player would decide this
+   way: the dear ones first. Ties fall to whatever the shoal order was. */
+function byWorth(a, b) {
+  return (Number(b.value) || 0) - (Number(a.value) || 0);
+}
+
 const FORWARD_Z = new THREE.Vector3(0, 0, 1);
 
 /* Scratch. Nothing in the per-frame path may allocate. */
@@ -65,6 +115,9 @@ const _tint = new THREE.Color();
 const _beamEye = new THREE.Vector3();
 const _beamDir = new THREE.Vector3();
 const _beamTo = new THREE.Vector3();
+const _netPrev = new THREE.Vector3();
+const _netTmp = new THREE.Vector3();
+const _netSpot = new THREE.Vector3();
 
 const CAPTURE_TINT = new THREE.Color(0xa8ecff);
 
@@ -118,6 +171,7 @@ export class Combat {
 
     this._buildMaterials();
     this._buildProjectiles();
+    this._buildNetPool();
     this._buildBeam();
     this._buildPulseCone();
   }
@@ -360,9 +414,10 @@ export class Combat {
   }
 
   _lockedFor(id) {
-    if (id !== "torpedo") return false;
     const stats = this.game.stats;
-    return !(stats && stats.torpedoUnlocked);
+    if (id === "torpedo") return !(stats && stats.torpedoUnlocked);
+    if (id === "net") return !(stats && stats.netUnlocked);
+    return false;
   }
 
   _ammoFor(id) {
@@ -370,6 +425,252 @@ export class Combat {
     const profile = this.game.profile;
     if (!profile || !profile.ammo) return 0;
     return Math.max(0, Number(profile.ammo.torpedo) || 0);
+  }
+
+  /* ------------------------------------------------------------- the net --
+     A net is not a bullet. It leaves the hand as a bundle, opens over about
+     four tenths of a second, then mostly stops being a projectile and starts
+     being drag and weight: it slows hard, sinks, and rolls. It catches on the
+     beat after it first touches something, so a throw that lands among a shoal
+     takes the shoal rather than the first fish it happened to graze. */
+  _buildNetPool() {
+    const spec = WEAPONS.net;
+    this.nets = [];
+
+    // One geometry, shared: spokes from the centre out to the rim, plus a few
+    // cross-cords, drawn as lines. Cheap, and it reads as a net rather than a
+    // disc.
+    const points = [];
+    for (let i = 0; i < NET_SPOKES; i += 1) {
+      const a = (i / NET_SPOKES) * TAU;
+      points.push(0, 0, NET_BAG_BACK, Math.cos(a), Math.sin(a), -NET_BAG_FRONT);
+    }
+    for (const r of NET_RINGS) {
+      for (let i = 0; i < NET_SPOKES; i += 1) {
+        const a = (i / NET_SPOKES) * TAU;
+        const b = ((i + 1) / NET_SPOKES) * TAU;
+        const z = lerp(NET_BAG_BACK, -NET_BAG_FRONT, r);
+        points.push(Math.cos(a) * r, Math.sin(a) * r, z, Math.cos(b) * r, Math.sin(b) * r, z);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+    this._netGeo = geo;
+
+    this._netMat = new THREE.LineBasicMaterial({
+      color: spec.color,
+      transparent: true,
+      opacity: NET_LINE_ALPHA,
+      depthWrite: false,
+      fog: false,
+    });
+
+    for (let i = 0; i < NET_POOL; i += 1) {
+      const mesh = new THREE.LineSegments(geo, this._netMat);
+      mesh.visible = false;
+      mesh.frustumCulled = false;
+      this.group.add(mesh);
+      this.nets.push({
+        object: mesh,
+        live: false,
+        position: new THREE.Vector3(),
+        velocity: new THREE.Vector3(),
+        life: 0,
+        age: 0,
+        open: 0,
+        closing: 0,
+        settle: -1,
+        spin: 0,
+        caught: null,
+      });
+    }
+  }
+
+  _throwNet(origin, dir) {
+    const spec = WEAPONS.net;
+    const net = this.nets.find((n) => !n.live);
+    if (!net) return false;
+
+    net.live = true;
+    net.position.copy(origin);
+    net.velocity.copy(dir).multiplyScalar(spec.speed);
+    net.life = spec.life;
+    net.age = 0;
+    net.open = 0;
+    net.closing = 0;
+    net.settle = -1;
+    net.spin = 0;
+    net.caught = null;
+    net.object.visible = true;
+    net.object.position.copy(origin);
+
+    this._sfx("harpoon");
+    if (this.game.vfx) {
+      this.game.vfx.bubbles(origin, 6, { spread: 0.7, rise: 0.8, size: 0.2, life: 1 });
+    }
+    return true;
+  }
+
+  _stepNets(dt) {
+    const game = this.game;
+    const spec = WEAPONS.net;
+    const radius = (game.stats && game.stats.netRadius) || spec.radius;
+
+    for (const net of this.nets) {
+      if (!net.live) continue;
+      net.age += dt;
+      net.life -= dt;
+      net.open = clamp01(net.age / NET_OPEN_TIME);
+      net.spin += dt * NET_SPIN;
+
+      if (net.closing > 0) {
+        // Drawstring. Once it is shut it is only an animation.
+        net.closing -= dt;
+        const shut = clamp01(net.closing / NET_CLOSE_TIME);
+        const scale = Math.max(0.05, radius * shut * net.open);
+        net.object.scale.set(scale, scale, scale);
+        net.object.position.copy(net.position);
+        net.object.rotation.z = net.spin;
+        if (net.closing <= 0) this._retireNet(net);
+        continue;
+      }
+
+      _netPrev.copy(net.position);
+
+      // An open net is mostly drag and weighted rim.
+      const drag = NET_DRAG * net.open;
+      net.velocity.multiplyScalar(Math.max(0, 1 - drag * dt));
+      net.velocity.y -= NET_SINK * net.open * dt;
+      net.position.addScaledVector(net.velocity, dt);
+
+      net.object.position.copy(net.position);
+      net.object.rotation.z = net.spin;
+      const scale = Math.max(NET_BUNDLE, radius * net.open);
+      net.object.scale.set(scale, scale, scale);
+
+      // Point it the way it is travelling while it still has a way.
+      if (net.velocity.lengthSq() > 0.4) {
+        _netTmp.copy(net.position).add(net.velocity);
+        net.object.lookAt(_netTmp);
+        net.object.rotateZ(net.spin);
+      }
+
+      // The floor stops it, and gives up a cloud of silt saying so.
+      const floor = game.world ? game.world.heightAt(net.position.x, net.position.z) : -Infinity;
+      const grounded = net.position.y <= floor + 0.6;
+      if (grounded) {
+        net.position.y = floor + 0.6;
+        net.velocity.set(0, 0, 0);
+        if (game.vfx) game.vfx.bloodCloud(net.position, NET_SILT);
+      }
+
+      /* Once it is open enough to hold anything, give it a beat past first
+         contact before it shuts, so a throw into a shoal takes the shoal. */
+      if (net.open >= NET_TRIGGER_OPEN && net.settle < 0) {
+        if (grounded || net.life <= NET_SETTLE || this._netTouching(net, radius)) {
+          net.settle = NET_SETTLE;
+        }
+      }
+      if (net.settle >= 0) {
+        net.settle -= dt;
+        if (net.settle <= 0) {
+          this._closeNet(net, radius);
+          continue;
+        }
+      }
+
+      if (net.life <= 0) this._closeNet(net, radius);
+      void _netPrev;
+    }
+  }
+
+  _netTouching(net, radius) {
+    const fish = this.game.fish;
+    if (!fish) return false;
+    const r2 = radius * radius;
+    for (const f of fish.all) {
+      if (!f.alive) continue;
+      if (f.position.distanceToSquared(net.position) <= r2) return true;
+    }
+    return false;
+  }
+
+  /* Shut the net and see what is in it. The hold is the only authority on
+     whether a fish fits, so every one of them goes through fish.capture(). */
+  _closeNet(net, radius) {
+    const game = this.game;
+    net.closing = NET_CLOSE_TIME;
+    net.settle = -1;
+    net.velocity.set(0, 0, 0);
+
+    const capacity = Math.max(1, (game.stats && game.stats.netCapacity) || 1);
+    const fish = game.fish;
+    if (!fish) return;
+
+    const r2 = radius * radius;
+    const inside = [];
+    for (const f of fish.all) {
+      if (!f.alive) continue;
+      if (f.position.distanceToSquared(net.position) <= r2) inside.push(f);
+    }
+    // A full net keeps the dear ones.
+    inside.sort(byWorth);
+
+    let taken = 0;
+    let worth = 0;
+    let refused = false;
+    for (const f of inside) {
+      if (taken >= capacity) break;
+      const item = fish.capture(f);
+      if (!item) {
+        refused = true;
+        break;
+      }
+      taken += 1;
+      worth += Number(item.value) || 0;
+      if (game.vfx) {
+        game.vfx.captureSparkle(f.position, f.species ? f.species.glowHex : WEAPONS.net.color);
+      }
+    }
+
+    if (game.vfx) {
+      game.vfx.bubbles(net.position, 10 + taken * 3, { spread: 1.6, rise: 1.4, size: 0.25, life: 1.6 });
+    }
+
+    if (taken > 0) {
+      this._chime(taken);
+      game.log(
+        `the net comes up with ${countWord(taken)}, ${formatCredits(worth)} credits of it.`,
+        "good",
+      );
+      if (inside.length > taken && !refused) {
+        game.log(`${countWord(inside.length - taken)} went through the mesh.`, "info");
+      }
+    } else if (refused) {
+      this._deny("the hold is full. the net comes up and goes straight back out.");
+    } else {
+      game.log("the net comes up empty.", "info");
+    }
+    if (refused && taken > 0) {
+      game.log("the hold is full. the rest go back.", "warn");
+    }
+  }
+
+  /* One bell per fish, counted out, because that is the sound of getting paid. */
+  _chime(count) {
+    if (!this.game.audio) return;
+    for (let i = 0; i < Math.min(count, 8); i += 1) {
+      window.setTimeout(() => {
+        if (this.game.audio) this.game.audio.sfx("capture");
+      }, i * NET_CHIME_GAP * 1000);
+    }
+  }
+
+  _retireNet(net) {
+    net.live = false;
+    net.closing = 0;
+    net.settle = -1;
+    net.object.visible = false;
   }
 
   _syncWeapons() {
@@ -408,6 +709,11 @@ export class Combat {
       return false;
     }
 
+    if (weapon.id === "net" && game.sub.cargoFull) {
+      this._deny("the hold is full. the net would only be letting them go again.");
+      return false;
+    }
+
     const cost = spec.cost || 0;
     if (cost > 0 && !game.sub.drawBattery(cost)) {
       this._deny("the cell has nothing left to spend on that.");
@@ -420,6 +726,7 @@ export class Combat {
     if (weapon.id === "harpoon") fired = this._fireHarpoon(_muzzle, _aim);
     else if (weapon.id === "torpedo") fired = this._fireTorpedo(_muzzle, _aim);
     else if (weapon.id === "pulse") fired = this._firePulse(_muzzle, _aim);
+    else if (weapon.id === "net") fired = this._throwNet(_muzzle, _aim);
 
     if (!fired) return false;
 
@@ -1001,6 +1308,7 @@ export class Combat {
        frozen in the water when a panel opens; the trigger and the beam are the
        parts that go quiet. */
     this._stepProjectiles(step);
+    this._stepNets(step);
 
     if (this.game.mode !== "dive" && this.beamActive) this.setBeam(false);
     this._updateBeam(step);
@@ -1010,6 +1318,13 @@ export class Combat {
   }
 
   dispose() {
+    for (const net of this.nets || []) {
+      net.live = false;
+      if (net.object && net.object.parent) net.object.parent.remove(net.object);
+    }
+    if (this._netGeo) this._netGeo.dispose();
+    if (this._netMat) this._netMat.dispose();
+
     this._releaseTarget();
     this.beamActive = false;
 

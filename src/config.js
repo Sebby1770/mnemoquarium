@@ -46,7 +46,7 @@ export const ZONES = [
     snow: 0.3,
     valueMultiplier: 1.8,
     hostileBudget: 2,
-    hostiles: [["shark", 0.42], ["squid", 0.3], ["lamprey", 0.28]],
+    hostiles: [["shark", 0.34], ["squid", 0.26], ["lamprey", 0.24], ["greatwhite", 0.16]],
     blurb: "green columns, and things that hold on",
   },
   {
@@ -60,7 +60,7 @@ export const ZONES = [
     snow: 0.55,
     valueMultiplier: 3.2,
     hostileBudget: 4,
-    hostiles: [["shark", 0.22], ["squid", 0.32], ["angler", 0.14], ["lamprey", 0.18], ["trapjaw", 0.14]],
+    hostiles: [["shark", 0.2], ["squid", 0.28], ["angler", 0.12], ["lamprey", 0.16], ["trapjaw", 0.12], ["grandmother", 0.12]],
     blurb: "the last of the light, spending itself",
   },
   {
@@ -74,7 +74,7 @@ export const ZONES = [
     snow: 0.8,
     valueMultiplier: 6.0,
     hostileBudget: 4,
-    hostiles: [["squid", 0.26], ["angler", 0.22], ["leviathan", 0.14], ["trapjaw", 0.2], ["gulper", 0.18]],
+    hostiles: [["squid", 0.22], ["angler", 0.18], ["leviathan", 0.12], ["trapjaw", 0.16], ["gulper", 0.16], ["ninefold", 0.1], ["grandmother", 0.06]],
     blurb: "no light but the light that wants you closer",
   },
   {
@@ -88,7 +88,7 @@ export const ZONES = [
     snow: 1.0,
     valueMultiplier: 11.0,
     hostileBudget: 5,
-    hostiles: [["wraith", 0.24], ["leviathan", 0.18], ["gulper", 0.16], ["siren", 0.18], ["trapjaw", 0.12], ["kraken", 0.12]],
+    hostiles: [["wraith", 0.2], ["leviathan", 0.14], ["gulper", 0.12], ["siren", 0.14], ["trapjaw", 0.1], ["ninefold", 0.1], ["tidewarden", 0.08], ["kraken", 0.12]],
     blurb: "where the tank keeps what it could not hold",
   },
 ];
@@ -131,6 +131,21 @@ export const POST = {
   aberration: 0.0016,       // grows with depth and with damage
   exposure: 1.02,
   maxPixelRatio: 2,
+};
+
+/* Big scenery is streamed in a window around the boat rather than sprinkled
+   over the whole 55 square kilometres — at world scale, a few hundred props
+   put the nearest one most of a kilometre away, which is the same as having
+   none. These are the numbers that decide how thick it is where you are. */
+export const SCENERY = {
+  cell: 130,               // metres per placement cell
+  radius: 5,               // cells kept around the boat in each direction
+  boulders: [0, 3],        // props per cell, min..max, chosen per cell by hash
+  towers: [0, 2],
+  weed: [0, 3],
+  maxBoulders: 760,
+  maxTowers: 420,
+  maxWeed: 900,
 };
 
 export const RARITY = {
@@ -196,6 +211,19 @@ export const WEAPONS = {
     cost: 0,
     ammoBase: 0,             // unlocked by upgrade
     color: 0xffb066,
+  },
+  net: {
+    id: "net",
+    name: "Drift Net",
+    damage: 0,
+    cooldown: 3.4,
+    speed: 38,
+    life: 3.4,
+    cost: 6,                 // battery per throw
+    radius: 11,              // how wide it opens
+    capacity: 3,             // fish per throw at mark 1
+    color: 0xbfe9d0,
+    ammo: Infinity,
   },
   pulse: {
     id: "pulse",
@@ -271,6 +299,12 @@ export const UPGRADES = [
     blurb: "Unlocks torpedoes, then carries more of them.",
     values: [0, 3, 6, 10, 16],
     costs: [900, 2100, 4600, 9200],
+  },
+  {
+    id: "net", name: "Drift Net", stat: "netCapacity", icon: "⊞",
+    blurb: "Unlocks the net, then widens it. Takes a whole shoal in one throw.",
+    values: [0, 3, 5, 8, 12],
+    costs: [780, 1850, 4200, 8900],
   },
   {
     id: "repair", name: "Repair Drone", stat: "repairRate", icon: "✚",
@@ -361,6 +395,51 @@ export const CREATURES = {
     // A mouth with an animal behind it. Swallows, then drags.
     swallow: true,
     trophy: "distended gullet", mythic: false,
+  },
+  grandmother: {
+    id: "grandmother", name: "Grandmother Tooth", kind: "beast",
+    hp: 1500, damage: 52, speed: 21, turn: 1.35, radius: 6.4, length: 18,
+    aggro: 150, attackRange: 13, attackCooldown: 2.6, bounty: 4200,
+    color: 0x6f7a80, bellyColor: 0xe8eef2, glow: 0,
+    // The shark that got old. Scarred, enormous, and in no hurry.
+    unique: true, mythic: true, scarred: true,
+    trophy: "grandmother's tooth",
+  },
+  ninefold: {
+    id: "ninefold", name: "The Ninefold", kind: "colony",
+    hp: 2300, damage: 30, speed: 8, turn: 0.8, radius: 7, length: 52,
+    aggro: 170, attackRange: 26, attackCooldown: 1.9, bounty: 7600,
+    color: 0x3a2f6b, bellyColor: 0x9df2ff, glow: 1,
+    // Nine bells on one chain, and it is not nine animals, and it is not one.
+    unique: true, mythic: true, bells: 9, batteryDrain: 6,
+    trophy: "a bell from the chain",
+  },
+  tidewarden: {
+    id: "tidewarden", name: "The Tidewarden", kind: "serpent",
+    hp: 3400, damage: 70, speed: 20, turn: 0.85, radius: 9, length: 78,
+    aggro: 220, attackRange: 20, attackCooldown: 3.2, bounty: 15000,
+    color: 0x123c3a, bellyColor: 0xffd27f, glow: 0.7,
+    unique: true, mythic: true, boss: true, segments: 26,
+    trophy: "warden's crest",
+  },
+  greatwhite: {
+    id: "greatwhite", name: "Old Grey", kind: "beast",
+    hp: 540, damage: 38, speed: 22, turn: 1.25, radius: 4.2, length: 11,
+    aggro: 130, attackRange: 9, attackCooldown: 2.6, bounty: 1400,
+    color: 0x565f68, bellyColor: 0xe4e9ec, glow: 0,
+    // One to a sea, and it remembers you. Runs in from outside the lamps.
+    unique: true, pack: [2, 3], scarred: true,
+    trophy: "grey tooth", mythic: false,
+  },
+  sperm: {
+    id: "sperm", name: "The Sounding", kind: "leviathan",
+    hp: 1600, damage: 52, speed: 16, turn: 0.55, radius: 9, length: 46,
+    aggro: 170, attackRange: 22, attackCooldown: 4.2, bounty: 6200,
+    color: 0x3b3742, bellyColor: 0xb9b2a4, glow: 0.1,
+    /* Not hostile until it is. It dives through the bands on its own errand
+       and will not turn for you — being in the way is the danger. */
+    unique: true, indifferent: true, huge: true,
+    trophy: "a tooth the size of your forearm", mythic: true,
   },
   kraken: {
     id: "kraken", name: "Kraken of Static", kind: "boss",

@@ -7,7 +7,7 @@
 import * as THREE from "three";
 
 import { CREATURES, SEA, ZONES, zoneForDepth, zoneIndex } from "./config.js";
-import { clamp, clamp01, damp, lerp, makeRng, weightedPick } from "./util.js";
+import { TAU, clamp, clamp01, damp, lerp, makeRng, smoothstep, weightedPick } from "./util.js";
 import { blade, disposeTree, mergeGeometries, spindle, tube } from "./geo.js";
 import { trophyItem } from "./progression.js";
 
@@ -71,65 +71,146 @@ function limb(segments, length, radius, material) {
   return { root, joints };
 }
 
+/* A shark, not a torpedo.
+ *
+ * The old body was a spindle with a symmetric profile — widest in the middle,
+ * pointed at both ends — which is the shape of a missile and read as one. The
+ * difference is almost entirely in the silhouette: a shark's girth peaks about
+ * a third back from the snout and then runs down a long taper to a narrow
+ * caudal peduncle, the back half is squeezed flat sideways, the tail is a
+ * crescent with a much longer upper lobe, and the mouth is slung underneath a
+ * blunt snout rather than sitting on the nose. Gills and a visible eye do the
+ * rest. */
 function buildShark(type) {
   const group = new THREE.Group();
-  const material = shellMaterial(type, { roughness: 0.7 });
-  const belly = shellMaterial(type, { color: type.bellyColor, roughness: 0.8, emissiveIntensity: 0 });
+  const L = type.length;
+  const material = shellMaterial(type, { roughness: 0.72 });
+  const belly = shellMaterial(type, { color: type.bellyColor, roughness: 0.82, emissiveIntensity: 0 });
+  const dark = shellMaterial(type, { color: 0x0b0d10, roughness: 0.5, emissiveIntensity: 0 });
+
+  /* t runs 0 at the tail to 1 at the snout. Girth is a lopsided bell peaking
+     forward of centre, pinched to a thin peduncle at the tail and rounded off
+     rather than sharpened at the nose. */
+  const profile = (t) => {
+    const bell = Math.exp(-Math.pow((t - 0.63) / 0.40, 2));
+    const peduncle = 0.14 + 0.86 * smoothstep(0, 0.28, t);
+    const snout = 1 - 0.72 * smoothstep(0.82, 1, t);
+    return clamp01(bell * peduncle * snout + 0.05);
+  };
 
   const body = spindle({
-    length: type.length, radius: type.length * 0.115, rings: 16, segments: 12,
-    profile: (t) => Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.9 + 0.05)), 0.62),
-    flattenX: 0.78,
+    length: L, radius: L * 0.125, rings: 22, segments: 14,
+    profile,
+    flattenX: 0.82,
   });
+
+  /* Squeeze the back half flat sideways. A shark is round through the
+     shoulders and a blade by the time it reaches the tail, and that taper is
+     most of why it looks like it can turn. */
+  {
+    const pos = body.attributes.position;
+    const half = L / 2;
+    for (let i = 0; i < pos.count; i += 1) {
+      const t = clamp01((pos.getZ(i) + half) / L);
+      const squeeze = lerp(0.52, 1, smoothstep(0.0, 0.55, t));
+      pos.setX(i, pos.getX(i) * squeeze);
+    }
+    body.computeVertexNormals();
+  }
   group.add(new THREE.Mesh(body, material));
 
+  // Pale underside, stopping short of the nose the way counter-shading does.
   const under = spindle({
-    length: type.length * 0.7, radius: type.length * 0.07, rings: 10, segments: 8,
-    profile: (t) => Math.sin(Math.PI * t),
-    flattenX: 0.9, flattenY: 0.45,
+    length: L * 0.66, radius: L * 0.072, rings: 12, segments: 10,
+    profile: (t) => Math.sin(Math.PI * clamp01(t * 0.9 + 0.05)),
+    flattenX: 0.95, flattenY: 0.42,
   });
-  under.translate(0, -type.length * 0.055, type.length * 0.02);
+  under.translate(0, -L * 0.052, L * 0.06);
   group.add(new THREE.Mesh(under, belly));
 
-  const dorsal = blade({ length: type.length * 0.24, width: type.length * 0.2, taper: 0.1, sweep: 0.7 });
+  // Dorsal: swept back hard, the one everybody can draw.
+  const dorsal = blade({ length: L * 0.3, width: L * 0.19, taper: 0.06, sweep: 0.95 });
   dorsal.rotateZ(Math.PI / 2);
   dorsal.rotateY(Math.PI / 2);
-  dorsal.translate(0, type.length * 0.11, -type.length * 0.02);
+  dorsal.translate(0, L * 0.115, L * 0.02);
   group.add(new THREE.Mesh(dorsal, material));
 
+  // A second, small dorsal back near the tail. Cheap, and very shark.
+  const dorsal2 = blade({ length: L * 0.1, width: L * 0.07, taper: 0.15, sweep: 0.9 });
+  dorsal2.rotateZ(Math.PI / 2);
+  dorsal2.rotateY(Math.PI / 2);
+  dorsal2.translate(0, L * 0.06, -L * 0.28);
+  group.add(new THREE.Mesh(dorsal2, material));
+
+  // Pectorals: long, held out flat like wings.
   for (const side of [-1, 1]) {
-    const pec = blade({ length: type.length * 0.22, width: type.length * 0.12, taper: 0.2, sweep: 0.8 });
+    const pec = blade({ length: L * 0.28, width: L * 0.13, taper: 0.14, sweep: 0.85 });
     pec.rotateX(Math.PI / 2);
-    pec.rotateZ(side * 1.05);
-    pec.translate(side * type.length * 0.07, -type.length * 0.03, type.length * 0.08);
+    pec.rotateZ(side * 1.25);
+    pec.translate(side * L * 0.075, -L * 0.035, L * 0.12);
     group.add(new THREE.Mesh(pec, material));
   }
+  // Pelvic pair, small, well back.
+  for (const side of [-1, 1]) {
+    const pel = blade({ length: L * 0.1, width: L * 0.06, taper: 0.2, sweep: 0.8 });
+    pel.rotateX(Math.PI / 2);
+    pel.rotateZ(side * 1.1);
+    pel.translate(side * L * 0.045, -L * 0.05, -L * 0.16);
+    group.add(new THREE.Mesh(pel, material));
+  }
 
-  // The tail is a child pivot so it can swing without the body following.
+  /* The tail is a crescent: the upper lobe is nearly twice the lower and rakes
+     back. It hangs off a pivot so it can sweep without dragging the body. */
   const tailPivot = new THREE.Group();
-  tailPivot.position.z = -type.length * 0.42;
-  const upper = blade({ length: type.length * 0.3, width: type.length * 0.16, taper: 0.12, sweep: 0.8 });
+  tailPivot.position.z = -L * 0.46;
+  const upper = blade({ length: L * 0.4, width: L * 0.15, taper: 0.1, sweep: 1.1 });
   upper.rotateZ(Math.PI / 2);
   upper.rotateY(Math.PI / 2);
-  upper.translate(0, type.length * 0.02, 0);
+  upper.rotateX(-0.28);
+  upper.translate(0, L * 0.03, 0);
   tailPivot.add(new THREE.Mesh(upper, material));
-  const lower = blade({ length: type.length * 0.18, width: type.length * 0.12, taper: 0.2, sweep: 0.7 });
+  const lower = blade({ length: L * 0.21, width: L * 0.11, taper: 0.18, sweep: 0.95 });
   lower.rotateZ(-Math.PI / 2);
   lower.rotateY(Math.PI / 2);
+  lower.rotateX(0.2);
   tailPivot.add(new THREE.Mesh(lower, material));
   group.add(tailPivot);
 
+  /* Head. A blunt snout, the mouth slung underneath it, five gill slits and an
+     eye that catches the lamps — the four things that make a fish head read as
+     a face at the edge of the light. */
+  const snout = new THREE.Mesh(new THREE.SphereGeometry(L * 0.085, 12, 9), material);
+  snout.scale.set(0.9, 0.78, 1.5);
+  snout.position.z = L * 0.43;
+  group.add(snout);
+
   const jaw = new THREE.Group();
-  jaw.position.z = type.length * 0.4;
-  const teeth = new THREE.Mesh(
-    new THREE.ConeGeometry(type.length * 0.075, type.length * 0.16, 8, 1, true),
-    shellMaterial(type, { color: 0x120e10, emissive: 0x3a1218, emissiveIntensity: 0.25 }),
+  jaw.position.set(0, -L * 0.045, L * 0.40);
+  const mouth = new THREE.Mesh(
+    new THREE.ConeGeometry(L * 0.062, L * 0.12, 9, 1, true),
+    shellMaterial(type, { color: 0x14090c, emissive: 0x4a1620, emissiveIntensity: 0.3 }),
   );
-  teeth.geometry.rotateX(-Math.PI / 2);
-  jaw.add(teeth);
+  mouth.geometry.rotateX(-Math.PI / 2);
+  mouth.rotation.x = 0.32;
+  jaw.add(mouth);
   group.add(jaw);
 
-  return { group, parts: { tail: tailPivot, jaw }, materials: [material, belly] };
+  for (let i = 0; i < 5; i += 1) {
+    for (const side of [-1, 1]) {
+      const slit = new THREE.Mesh(new THREE.BoxGeometry(L * 0.006, L * 0.05, L * 0.012), dark);
+      slit.position.set(side * L * 0.085, -L * 0.01, L * 0.26 - i * L * 0.032);
+      slit.rotation.x = 0.2;
+      group.add(slit);
+    }
+  }
+
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(L * 0.018, 8, 6), dark);
+    eye.position.set(side * L * 0.072, L * 0.022, L * 0.375);
+    group.add(eye);
+  }
+
+  return { group, parts: { tail: tailPivot, jaw }, materials: [material, belly, dark] };
 }
 
 function buildSquid(type) {
@@ -563,7 +644,159 @@ function buildGulper(type) {
   return { group, parts: { jaw, tail: tailPivot }, materials: [material, mawMat] };
 }
 
+/* A shark that has been around. Same animal, more of it, plus the pale
+   streaks that say it has been in fights it won. */
+function buildScarredShark(type) {
+  const built = buildShark(type);
+  const L = type.length;
+  const scarMat = shellMaterial(type, {
+    color: 0xd7dee3, roughness: 0.55, emissive: 0x9fb4c4, emissiveIntensity: 0.12,
+  });
+  const rng = makeRng(type.id.length * 7919, "scars");
+  for (let i = 0; i < 9; i += 1) {
+    const scar = new THREE.Mesh(
+      new THREE.BoxGeometry(L * randRangeLocal(rng, 0.004, 0.009), L * randRangeLocal(rng, 0.03, 0.1), L * 0.004),
+      scarMat,
+    );
+    const side = rng.random() < 0.5 ? -1 : 1;
+    scar.position.set(
+      side * L * randRangeLocal(rng, 0.06, 0.1),
+      L * randRangeLocal(rng, -0.04, 0.08),
+      L * randRangeLocal(rng, -0.28, 0.36),
+    );
+    scar.rotation.z = randRangeLocal(rng, -0.9, 0.9);
+    built.group.add(scar);
+  }
+  built.materials.push(scarMat);
+  return built;
+}
+
+/* Nine bells on one chain. It is not nine animals and it is not one, which is
+   the only genuinely upsetting thing about it. */
+function buildNinefold(type) {
+  const group = new THREE.Group();
+  const L = type.length;
+  const skin = new THREE.MeshBasicMaterial({
+    color: type.color, transparent: true, opacity: 0.4,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  });
+  const lightMat = new THREE.MeshBasicMaterial({
+    color: type.bellyColor, transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+
+  const bells = [];
+  const count = type.bells || 9;
+  const chain = [];
+  for (let i = 0; i < count; i += 1) {
+    const t = i / (count - 1);
+    const z = lerp(L * 0.45, -L * 0.5, t);
+    const r = type.radius * lerp(1, 0.45, t);
+
+    const bell = new THREE.Group();
+    bell.position.z = z;
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(r, 12, 9, 0, Math.PI * 2, 0, Math.PI * 0.62),
+      skin,
+    );
+    dome.rotation.x = Math.PI;
+    bell.add(dome);
+    const core = new THREE.Mesh(new THREE.SphereGeometry(r * 0.28, 8, 6), lightMat);
+    bell.add(core);
+    if (i % 3 === 0) {
+      const glow = new THREE.PointLight(type.bellyColor, 6, r * 22, 2);
+      bell.add(glow);
+    }
+    // Trailing threads, because the danger is the part you cannot see.
+    for (let k = 0; k < 4; k += 1) {
+      const a = (k / 4) * TAU;
+      const thread = new THREE.Mesh(
+        new THREE.CylinderGeometry(r * 0.02, r * 0.005, L * 0.22, 4),
+        skin,
+      );
+      thread.position.set(Math.cos(a) * r * 0.6, -L * 0.11, Math.sin(a) * r * 0.6);
+      bell.add(thread);
+    }
+    group.add(bell);
+    bells.push(bell);
+    chain.push(bell);
+  }
+  return { group, parts: { bells, segments: chain }, materials: [skin, lightMat] };
+}
+
+/* The Sounding. A blunt square head that is most of the animal, a narrow jaw
+   slung under it, and flukes. It is not hunting you; it is going somewhere. */
+function buildSperm(type) {
+  const group = new THREE.Group();
+  const L = type.length;
+  const material = shellMaterial(type, { roughness: 0.86 });
+  const pale = shellMaterial(type, { color: type.bellyColor, roughness: 0.9, emissiveIntensity: 0 });
+
+  // The head: a box of oil, squared off at the front.
+  const head = new THREE.Mesh(new THREE.CylinderGeometry(type.radius, type.radius * 0.95, L * 0.36, 14, 2), material);
+  head.rotation.x = Math.PI / 2;
+  head.position.z = L * 0.28;
+  head.scale.set(1, 1, 0.82);
+  group.add(head);
+  const brow = new THREE.Mesh(new THREE.SphereGeometry(type.radius, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), material);
+  brow.rotation.x = -Math.PI / 2;
+  brow.position.z = L * 0.46;
+  brow.scale.set(1, 1, 0.7);
+  group.add(brow);
+
+  const body = spindle({
+    length: L * 0.74, radius: type.radius * 0.92, rings: 18, segments: 12,
+    profile: (t) => Math.pow(Math.sin(Math.PI * clamp01(t * 0.78 + 0.2)), 0.8),
+    flattenX: 0.9,
+  });
+  body.translate(0, 0, -L * 0.14);
+  group.add(new THREE.Mesh(body, material));
+
+  // The jaw: thin, underslung, and full of the teeth the trophy comes from.
+  const jaw = new THREE.Group();
+  jaw.position.set(0, -type.radius * 0.72, L * 0.3);
+  const jawMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(type.radius * 0.11, type.radius * 0.16, L * 0.3, 8),
+    pale,
+  );
+  jawMesh.rotation.x = Math.PI / 2;
+  jaw.add(jawMesh);
+  group.add(jaw);
+
+  // Wrinkles along the flank, the way a sperm whale is corrugated.
+  for (let i = 0; i < 9; i += 1) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(type.radius * (0.88 - i * 0.045), type.radius * 0.03, 4, 14),
+      material,
+    );
+    ring.position.z = -L * 0.06 - i * L * 0.04;
+    group.add(ring);
+  }
+
+  const tailPivot = new THREE.Group();
+  tailPivot.position.z = -L * 0.48;
+  for (const side of [-1, 1]) {
+    const fluke = blade({ length: L * 0.2, width: type.radius * 1.5, taper: 0.25, sweep: 0.6 });
+    fluke.rotateX(Math.PI / 2);
+    fluke.rotateZ(side * 0.2);
+    fluke.translate(side * type.radius * 0.5, 0, 0);
+    tailPivot.add(new THREE.Mesh(fluke, material));
+  }
+  group.add(tailPivot);
+
+  return { group, parts: { tail: tailPivot, jaw }, materials: [material, pale] };
+}
+
+function randRangeLocal(rng, lo, hi) {
+  return lo + rng.random() * (hi - lo);
+}
+
 const BUILDERS = {
+  greatwhite: buildScarredShark,
+  grandmother: buildScarredShark,
+  tidewarden: buildLeviathan,
+  ninefold: buildNinefold,
+  sperm: buildSperm,
   lamprey: buildLamprey,
   trapjaw: buildTrapjaw,
   siren: buildSiren,

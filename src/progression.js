@@ -241,6 +241,16 @@ export function computeStats(upgrades) {
   stats.torpedoAmmo = Math.max(0, Math.floor(num(stats.torpedoAmmo, 0)));
   stats.torpedoUnlocked = stats.torpedoAmmo > 0;
 
+  /* Same shape for the net: mark 0 is no net at all, and every mark after that
+     both catches more and opens wider, because a net that holds more but lands
+     on the same patch of water would not feel like anything. */
+  stats.netCapacity = Math.max(0, Math.floor(num(stats.netCapacity, 0)));
+  stats.netUnlocked = stats.netCapacity > 0;
+  const netLevel = upgradeLevel(levels, "net");
+  stats.netRadius = stats.netUnlocked
+    ? num(WEAPONS.net.radius, 9) * (1 + 0.18 * Math.max(0, netLevel - 1))
+    : 0;
+
   // Keep the rest honest — nothing downstream should ever divide by a NaN.
   stats.hullMax = Math.max(1, num(stats.hullMax, SUB.hullBase));
   stats.batteryMax = Math.max(1, num(stats.batteryMax, SUB.batteryBase));
