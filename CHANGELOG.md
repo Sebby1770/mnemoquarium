@@ -2,6 +2,47 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.3.0] - 2026-09-22
+
+### Fixed
+- **You could not see the big scenery, because it was not there.** Nine hundred
+  props scattered over fifty-five square kilometres put a measured *two* of
+  them within 120 m of the boat, against a fog-limited view of about 150. The
+  field is streamed now: the world is cut into cells, a cell's contents are a
+  pure function of (seed, cell), and only the cells near the boat are written
+  into the instance buffers. Same determinism, same draw-call budget — and 21
+  props within 150 m instead of 2, the nearest at 24 m.
+- **The drift net could never reach anything.** It shed 92% of its speed every
+  second and stopped twelve metres out, and it opened so slowly that fish it
+  started next to had fled before it could close. Drag only applies once it is
+  open and is gentler, it opens in a quarter of a second, and it throws
+  further. It now takes its full capacity out of a shoal.
+
+### Added
+- **The drift net** (`4`). The capture beam takes one fish while something with
+  teeth decides what it thinks of you holding still; the net takes a whole
+  shoal for one throw and one cell's worth of charge. Bought in the drydock,
+  three fish a cast at mark 1 and twelve at mark 4. A full net keeps the dear
+  ones and lets the rest through the mesh.
+- **Eighteen landmarks**, seven kinds, placed by the phrase from 57 m to
+  1,431 m: wrecks broken in two with a gap you can fly through, hydrothermal
+  vent fields, whale falls, rock arches, deep kelp groves, drowned lights still
+  turning, and boneyards. Finding one pays a survey fee that scales with depth.
+  Geometry is built when you come within 460 m and given back when you leave.
+- **Five more creatures with bodies of their own** — Old Grey and Grandmother
+  Tooth (scarred apex sharks), The Sounding (a sperm whale that is not hunting
+  you and will not turn for you), The Ninefold (nine bells on one chain), and
+  The Tidewarden. Fifteen creature types now, all with distinct silhouettes.
+
+### Changed
+- **The shark is an animal instead of a missile.** Its body was a symmetric
+  spindle — widest in the middle, pointed at both ends — which is the shape of
+  a torpedo. Girth now peaks a third back from a blunt snout and runs down a
+  long taper to a narrow peduncle, the back half is squeezed flat sideways, the
+  tail is a crescent with a much longer upper lobe, and it has an underslung
+  mouth, five gill slits, an eye and a second dorsal.
+- Boulders are rounder; they were stretching into slabs.
+
 ## [1.2.0] - 2026-09-13
 
 ### Added

@@ -11,7 +11,7 @@
    underneath, and the Hull — the one warm thing down here. */
 
 import * as THREE from "three";
-import { SEA, ZONES, zoneForDepth } from "./config.js";
+import { SCENERY, SEA, ZONES, zoneForDepth } from "./config.js";
 import { mergeGeometries } from "./geo.js";
 import {
   TAU,
@@ -387,6 +387,28 @@ function buildWorms(rng, tubeLow, tubeHigh) {
 }
 
 /* A wreck. Nobody says whose. Half a hull, some ribs, a mast that went over. */
+/* A boulder: two to four lumps welded together and flattened, so a field of
+   them reads as broken rock rather than a bag of potatoes. Unit radius, so an
+   instance scale is roughly its size in metres. */
+function buildBoulder(rng) {
+  const parts = [];
+  const lumps = 2 + rng.randrange(3);
+  for (let i = 0; i < lumps; i += 1) {
+    const r = i === 0 ? 1 : randRange(rng, 0.42, 0.78);
+    const lump = jitterGeometry(new THREE.IcosahedronGeometry(r, 1), rng, 0.34);
+    lump.scale(randRange(rng, 0.9, 1.2), randRange(rng, 0.78, 1.05), randRange(rng, 0.9, 1.2));
+    if (i > 0) {
+      const a = rng.random() * TAU;
+      const d = randRange(rng, 0.5, 0.95);
+      lump.translate(Math.cos(a) * d, randRange(rng, -0.25, 0.3), Math.sin(a) * d);
+    }
+    parts.push(lump);
+  }
+  const merged = mergeGeometries(parts);
+  for (const g of parts) g.dispose();
+  return paintByHeight(merged, 0x0a0d12, 0x77756b, 0.26);
+}
+
 /* A coral tower: a stack of lobes narrowing upward, with a few arms off it.
    Unit height, so an instance scale is its height in metres. */
 function buildCoralTower(rng) {
@@ -1492,6 +1514,19 @@ export class SeaWorld {
      you can lose a shark behind, and curtains of weed thick enough that going
      through is a decision. Each shape is one instanced draw call, so the whole
      field costs four. */
+  /* ------------------------------------------------------- big scenery --
+     Measured problem: scattering nine hundred props over a world of radius
+     4200 — fifty-five square kilometres — put exactly two of them within 120 m
+     of the boat, against a fog-limited view of about 150. The player had never
+     seen a boulder. Raising the count until the density is right anywhere
+     would mean tens of thousands of instances.
+
+     So the field is streamed instead. The world is divided into cells; a cell's
+     contents are a pure function of (seed, cellX, cellZ), so a patch of sea
+     always has the same rocks in the same places and leaving and coming back
+     shows you the same scene. Only the cells near the boat are ever written
+     into the instance buffers, which keeps the count bounded and the density
+     high exactly where it is looked at. */
   _buildGiantField() {
     const rng = makeRng(this.seed, "giants");
     const root = new THREE.Group();
@@ -1501,7 +1536,7 @@ export class SeaWorld {
       vertexColors: true, roughness: 0.96, metalness: 0, fog: true,
     }));
     const coralMat = this._mat(new THREE.MeshStandardMaterial({
-      vertexColors: true, roughness: 0.82, metalness: 0, side: THREE.DoubleSide, fog: true,
+      vertexColors: true, roughness: 0.8, metalness: 0, side: THREE.DoubleSide, fog: true,
     }));
     const weedMat = this._mat(new THREE.MeshStandardMaterial({
       vertexColors: true, roughness: 0.6, metalness: 0, side: THREE.DoubleSide, fog: true,
@@ -1512,102 +1547,160 @@ export class SeaWorld {
       this.game.water.register(weedMat);
     }
 
-    /* --- boulders: 10 to 30 metres, leaning, in loose clusters ------------ */
-    {
-      const geo = this._geo(paintByHeight(
-        jitterGeometry(new THREE.IcosahedronGeometry(1, 1), rng, 0.42), 0x0b0e13, 0x6f6e64, 0.22));
-      const per = 300;
-      const mesh = new THREE.InstancedMesh(geo, rockMat, per);
-      mesh.frustumCulled = false;
-      let i = 0;
-      // Clusters, not confetti: a gap between two boulders is worth flying through.
-      this._scatter(rng, 84, 8, SEA.maxDepth, 0.5, 90, (cx, cy, cz, depth) => {
-        const lumps = 2 + rng.randrange(4);
-        for (let k = 0; k < lumps && i < per; k += 1) {
-          const a = rng.random() * TAU;
-          const rad = Math.sqrt(rng.random()) * 34;
-          const x = cx + Math.cos(a) * rad;
-          const z = cz + Math.sin(a) * rad;
-          const y = this.heightAt(x, z);
-          const sc = randRange(rng, 5.5, 15);
-          _e1.set(randRange(rng, -0.5, 0.5), rng.random() * TAU, randRange(rng, -0.5, 0.5));
-          _q1.setFromEuler(_e1);
-          _v1.set(x, y - sc * randRange(rng, 0.18, 0.42), z);
-          _v2.set(sc * randRange(rng, 0.8, 1.35), sc * randRange(rng, 0.75, 1.6), sc * randRange(rng, 0.8, 1.35));
-          _m1.compose(_v1, _q1, _v2);
-          mesh.setMatrixAt(i, _m1);
-          rampColor(ROCK_RAMP, depth, _c1);
-          _c1.multiplyScalar(randRange(rng, 1.4, 2.4));
-          mesh.setColorAt(i, _c1);
-          i += 1;
-        }
+    // A handful of shapes each, so a field does not read as one rock repeated.
+    this.sceneryKinds = [
+      {
+        key: "boulders",
+        max: SCENERY.maxBoulders,
+        range: SCENERY.boulders,
+        minDepth: 6,
+        maxDepth: SEA.maxDepth + 400,
+        shapes: [0, 1, 2].map(() => this._geo(buildBoulder(rng))),
+        mesh: null,
+      },
+      {
+        key: "towers",
+        max: SCENERY.maxTowers,
+        range: SCENERY.towers,
+        minDepth: 12,
+        maxDepth: 340,
+        shapes: [0, 1, 2].map(() => this._geo(buildCoralTower(rng))),
+        mesh: null,
+      },
+      {
+        key: "weed",
+        max: SCENERY.maxWeed,
+        range: SCENERY.weed,
+        minDepth: 8,
+        maxDepth: 520,
+        shapes: [0, 1, 2].map(() => this._geo(buildWeedCurtain(rng))),
+        mesh: null,
+      },
+    ];
+
+    const matFor = { boulders: rockMat, towers: coralMat, weed: weedMat };
+    for (const kind of this.sceneryKinds) {
+      // One mesh per shape so the whole field is nine draw calls, not nine
+      // hundred, and each can be filled independently as cells come and go.
+      kind.meshes = kind.shapes.map((geo) => {
+        const mesh = new THREE.InstancedMesh(geo, matFor[kind.key], Math.ceil(kind.max / kind.shapes.length));
+        mesh.frustumCulled = false;
+        mesh.count = 0;
+        mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        root.add(mesh);
+        return mesh;
       });
-      mesh.count = i;
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      root.add(mesh);
     }
 
-    /* --- coral towers: columns on the shelf, 14 to 40 metres -------------- */
-    {
-      const geo = this._geo(buildCoralTower(rng));
-      const per = 190;
-      const mesh = new THREE.InstancedMesh(geo, coralMat, per);
-      mesh.frustumCulled = false;
-      let i = 0;
-      this._scatter(rng, per, 12, 320, 0.74, 80, (x, y, z) => {
-        const sc = randRange(rng, 14, 40);
-        _e1.set(randRange(rng, -0.08, 0.08), rng.random() * TAU, randRange(rng, -0.08, 0.08));
-        _q1.setFromEuler(_e1);
-        _v1.set(x, y - 1.5, z);
-        _v2.set(sc * randRange(rng, 0.5, 0.85), sc, sc * randRange(rng, 0.5, 0.85));
-        _m1.compose(_v1, _q1, _v2);
-        mesh.setMatrixAt(i, _m1);
-        _c1.setHex(0xffffff).multiplyScalar(randRange(rng, 0.65, 1.3));
-        mesh.setColorAt(i, _c1);
-        i += 1;
-      });
-      mesh.count = i;
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      root.add(mesh);
-    }
-
-    /* --- weed curtains: dense patches you push through -------------------- */
-    {
-      const geo = this._geo(buildWeedCurtain(rng));
-      const per = 460;
-      const mesh = new THREE.InstancedMesh(geo, weedMat, per);
-      mesh.frustumCulled = false;
-      let i = 0;
-      this._scatter(rng, 100, 10, 420, 0.8, 70, (cx, cy, cz) => {
-        const blades = 3 + rng.randrange(4);
-        for (let k = 0; k < blades && i < per; k += 1) {
-          const a = rng.random() * TAU;
-          const rad = Math.sqrt(rng.random()) * 26;
-          const x = cx + Math.cos(a) * rad;
-          const z = cz + Math.sin(a) * rad;
-          const y = this.heightAt(x, z);
-          const sc = randRange(rng, 12, 27);
-          _e1.set(0, rng.random() * TAU, randRange(rng, -0.12, 0.12));
-          _q1.setFromEuler(_e1);
-          _v1.set(x, y - 0.6, z);
-          _v2.set(sc * randRange(rng, 0.7, 1.2), sc, sc * randRange(rng, 0.7, 1.2));
-          _m1.compose(_v1, _q1, _v2);
-          mesh.setMatrixAt(i, _m1);
-          _c1.setHex(0xffffff).multiplyScalar(randRange(rng, 0.55, 1.25));
-          mesh.setColorAt(i, _c1);
-          i += 1;
-        }
-      });
-      mesh.count = i;
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      root.add(mesh);
-    }
-
-    // Big enough to be worth seeing from any depth the player can survive.
+    this.sceneryRoot = root;
+    this.sceneryCell = { x: Infinity, z: Infinity };
     this._addLayer(root, 0, SEA.maxDepth + 400);
+  }
+
+  /* Rewrite the instance buffers for the window around (cx, cz). Cheap enough
+     to do in one frame: about a thousand height lookups, and heightAt inside
+     the detail tile is a bilinear read rather than a noise evaluation. */
+  _fillScenery(cx, cz) {
+    const cell = SCENERY.cell;
+    const reach = SCENERY.radius;
+    const pads = this.pads || [];
+
+    for (const kind of this.sceneryKinds) {
+      for (const mesh of kind.meshes) mesh.count = 0;
+    }
+
+    for (let gz = cz - reach; gz <= cz + reach; gz += 1) {
+      for (let gx = cx - reach; gx <= cx + reach; gx += 1) {
+        // Skip the corners of the square so the field reads as a disc.
+        const dx = gx - cx;
+        const dz = gz - cz;
+        if (dx * dx + dz * dz > (reach + 0.5) * (reach + 0.5)) continue;
+
+        for (const kind of this.sceneryKinds) {
+          const cr = makeRng(this.seed, kind.key, gx, gz);
+          const [lo, hi] = kind.range;
+          const want = lo + cr.randrange(Math.max(1, hi - lo + 1));
+          for (let i = 0; i < want; i += 1) {
+            const x = (gx + cr.random()) * cell;
+            const z = (gz + cr.random()) * cell;
+            const r = Math.sqrt(x * x + z * z);
+            if (r > SEA.worldRadius) continue;
+
+            const y = this.heightAt(x, z);
+            const depth = -y;
+            if (depth < kind.minDepth || depth > kind.maxDepth) continue;
+
+            // Nothing grows on a wall, and nothing grows on the landing pads.
+            this.normalAt(x, z, _v3);
+            if (_v3.y < 0.62) continue;
+            let onPad = false;
+            for (let k = 0; k < pads.length; k += 1) {
+              const px = x - pads[k][0];
+              const pz = z - pads[k][1];
+              if (px * px + pz * pz < pads[k][4] * pads[k][4]) { onPad = true; break; }
+            }
+            if (onPad) continue;
+
+            const pick = cr.randrange(kind.meshes.length);
+            const mesh = kind.meshes[pick];
+            if (mesh.count >= mesh.instanceMatrix.count) continue;
+
+            let sc;
+            let lean;
+            if (kind.key === "boulders") {
+              sc = randRange(cr, 8, 30);
+              lean = 0.45;
+            } else if (kind.key === "towers") {
+              sc = randRange(cr, 15, 45);
+              lean = 0.1;
+            } else {
+              sc = randRange(cr, 13, 30);
+              lean = 0.14;
+            }
+
+            _e1.set(randRange(cr, -lean, lean), cr.random() * TAU, randRange(cr, -lean, lean));
+            _q1.setFromEuler(_e1);
+            const sink = kind.key === "boulders" ? sc * randRange(cr, 0.16, 0.4) : 1.2;
+            _v1.set(x, y - sink, z);
+            const wobble = kind.key === "boulders" ? 0.14 : 0.3;
+            _v2.set(
+              sc * randRange(cr, 1 - wobble, 1 + wobble),
+              sc * randRange(cr, 1 - wobble, 1 + wobble) * (kind.key === "boulders" ? 0.88 : 1),
+              sc * randRange(cr, 1 - wobble, 1 + wobble),
+            );
+            _m1.compose(_v1, _q1, _v2);
+            mesh.setMatrixAt(mesh.count, _m1);
+
+            if (kind.key === "boulders") {
+              rampColor(ROCK_RAMP, depth, _c1);
+              _c1.multiplyScalar(randRange(cr, 1.4, 2.4));
+            } else {
+              _c1.setHex(0xffffff).multiplyScalar(randRange(cr, 0.6, 1.3));
+            }
+            mesh.setColorAt(mesh.count, _c1);
+            mesh.count += 1;
+          }
+        }
+      }
+    }
+
+    for (const kind of this.sceneryKinds) {
+      for (const mesh of kind.meshes) {
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      }
+    }
+  }
+
+  _updateScenery(cam) {
+    if (!this.sceneryKinds) return;
+    const cell = SCENERY.cell;
+    const cx = Math.floor(cam.x / cell);
+    const cz = Math.floor(cam.z / cell);
+    if (cx === this.sceneryCell.x && cz === this.sceneryCell.z) return;
+    this.sceneryCell.x = cx;
+    this.sceneryCell.z = cz;
+    this._fillScenery(cx, cz);
   }
 
   _buildWreckField() {
@@ -2034,6 +2127,7 @@ export class SeaWorld {
     const depth = Math.max(0, -cam.y);
 
     this._updateNear(cam);
+    this._updateScenery(cam);
     this._updateSnow(dt, cam, depth);
     this._updateSurface(dt, cam, depth);
     this._updateRays(dt, cam, depth);
