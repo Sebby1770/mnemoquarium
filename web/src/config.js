@@ -141,9 +141,15 @@ export const SCENERY = {
   cell: 130,               // metres per placement cell
   radius: 5,               // cells kept around the boat in each direction
   boulders: [0, 3],        // props per cell, min..max, chosen per cell by hash
-  towers: [0, 2],
+  towers: [0, 1],          // reef bommies per cell
   weed: [0, 3],
+  reef: [1, 7],            // small coral heads per cell, on the shelf
+  kelp: [0, 2],            // kelp stands per cell (each stand is a clump)
+  fans: [0, 2],            // sea-fan clumps per cell
   maxBoulders: 760,
+  maxReef: 1500,
+  maxKelp: 2600,
+  maxFans: 900,
   maxTowers: 420,
   maxWeed: 900,
 };
@@ -325,7 +331,7 @@ export const CREATURES = {
     id: "shark", name: "Reef Shark", kind: "beast",
     hp: 70, damage: 13, speed: 15.5, turn: 1.5, radius: 2.6, length: 4.4,
     aggro: 62, attackRange: 6.5, attackCooldown: 2.0, bounty: 85,
-    color: 0x5d6b78, bellyColor: 0xd7dde2, glow: 0,
+    color: 0x46525e, bellyColor: 0xd7dde2, glow: 0,
     trophy: "shark tooth", mythic: false,
   },
   squid: {

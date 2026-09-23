@@ -21,7 +21,7 @@ the bottom of the menu takes any phrase you like.
 | | |
 | --- | --- |
 | `W` `A` `S` `D` | thrust |
-| `Space` / `C` | rise / dive |
+| `Space` / `C` | rise / dive — keep rising and you surface |
 | `Shift` | boost |
 | mouse | look (click once to lock) |
 | `LMB` | fire |
@@ -33,6 +33,11 @@ the bottom of the menu takes any phrase you like.
 | `E` | dock at the Hull |
 | `Tab` | look in the hold |
 | `Esc` | pause |
+
+**The surface.** Keep rising and the tower breaks through into air: a sky,
+a swell that rocks the boat, and a diesel that charges the cell for free while
+you sit up there. From underneath, the surface is a bright window of sky
+overhead.
 
 **The loop.** Dive from the Hull → hold the beam on a fish until it comes in →
 come back, sell the hold, refit → go deeper than you could last time.
@@ -130,6 +135,9 @@ python3 -m http.server 8765 --directory web
 
 - `web/engine.js` — the genetics: species, genomes, inheritance, mutation
 - `web/src/water.js` — the underwater light model: absorption, scattering, caustics
+- `web/src/sky.js` — the sky, the sea surface from both sides, and the swell
+- `web/src/post.js` — HDR bloom and the per-depth colour grade
+- `web/src/landmarks.js` — the places worth finding
 - `web/src/ecology.js` — phrase to species to price
 - `web/src/world.js` — seabed, depth bands, flora, the Hull
 - `web/src/sub.js` — flight, systems, pressure, the cockpit

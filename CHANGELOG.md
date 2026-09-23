@@ -2,6 +2,63 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.4.0] - 2026-09-23
+
+### Added
+- **A sky, and a surface you can come up through.** The boat used to hit a
+  ceiling at -1.4 m under a bright sheet of scrolling blobs with light cones
+  hanging off it. Now there is a real sea surface — a wave field you can float
+  on — and a sky with a sun and moving cloud above it. Hold Space and the tower
+  breaks the surface; the boat rides the swell and rocks with it, and the
+  diesel charges the cell for free while you sit up there. C takes you down.
+- **Snell's window.** From underneath, the surface is the bright disc of sky
+  you only see looking up inside about 48 degrees of vertical, bent by the
+  waves, with the rest of the underside mirroring the dark water below. The
+  swell the boat floats on and the swell you see are the same function.
+- **Post-processing, with no addons**: the scene renders to a half-float target
+  so a lamp, a vent or the sun can be brighter than white, and a dual-filter
+  bloom lets that bleed into the water. The composite tone-maps and grades
+  contrast and saturation per depth band — saturated on the shelf, drained in
+  the abyss — with a vignette and a little grain. Measured cost on top of the
+  frame: 0 to 1.7 ms at a 2400 x 1520 buffer.
+- **A reef.** Branching staghorn with bright growing tips, brain coral with
+  meandering grooves, tiered table coral, and tube sponges, in reef colours
+  that the water drains with depth the way it really does.
+- **Reef bommies** built out of coral heads stacked into a mound around a
+  rock core, instead of one displaced column (which read as a giant blue egg).
+- **Kelp you can get lost in**: stands of giant kelp with blades up the stipe,
+  and sea fans, swaying in the shader.
+
+### Changed
+- **Rocks are rocks.** Displaced by three scales of noise with cracks cut in,
+  welded so they shade smooth rather than faceted, with baked ambient occlusion
+  (dark in the hollows and underneath) and moss on the tops that thins out with
+  depth and gives way to silt.
+- **Sharks swim.** Every fish-shaped creature bends with a travelling wave that
+  starts at nothing at the snout and grows toward the tail, computed in the
+  creature's own frame so fins and tail bend with the body instead of coming
+  apart. Whales wave up and down. Countershading and a lamp rim-light come with
+  it. The shark lost the separate belly mesh that made it look like a beluga,
+  and got a darker back and a pointed snout.
+- **Weed, kelp and fans sway on the GPU.** The old sea-fan and kelp fields were
+  one draw call per clump — about 300 of them — for CPU sway. Now they are
+  streamed and instanced like the rest of the scenery: **354 draw calls down to
+  51** while adding 1,400 kelp stalks and 650 fans, with fewer triangles.
+- The god-ray cones and the old surface sheet are gone.
+- The cockpit glass streaks are gone: against a bright sky they read as white
+  bars across the view.
+- Vent fields carry a warm halo that survives the water, so they read as a glow
+  in the black from a hundred metres off; fish bioluminescence is a soft round
+  glow instead of a square.
+
+### Fixed
+- The world clamp still had its own "the surface is not an exit" ceiling at
+  -2.5 m, and hitting it logged "the current leans on you", which was about the
+  edge of the world, not the top of it.
+- The Tidewarden and the Ninefold never had their follow-the-leader trail
+  seeded (only the leviathan did), so their bodies started collapsed onto the
+  head.
+
 ## [1.3.0] - 2026-09-22
 
 ### Fixed

@@ -19,6 +19,8 @@ import { Combat } from "./combat.js";
 import { Audio } from "./audio.js";
 import { Water } from "./water.js";
 import { Landmarks } from "./landmarks.js";
+import { SkyAndSea } from "./sky.js";
+import { PostFX } from "./post.js";
 import { HUD } from "./hud.js";
 
 const MAX_DT = 1 / 20;         // a long frame must not teleport the boat
@@ -73,6 +75,17 @@ export class Game {
     this.ecology = new Ecology(this.phrase, this.seed);
     // Water first: every lit material built after this asks it for the optics.
     this.water = new Water(this);
+    // The surface and the sky borrow the water's optics, and the boat floats
+    // on the surface, so this sits between the two.
+    this.sky = new SkyAndSea(this);
+    /* Bloom and grade. If the half-float targets are not available the game
+       falls back to drawing straight to the canvas rather than not drawing. */
+    try {
+      this.post = new PostFX(this);
+    } catch (err) {
+      console.warn("post-processing unavailable, drawing direct", err);
+      this.post = null;
+    }
     this.world = new SeaWorld(this);
     this.vfx = new VFX(this);
     this.sub = new Submarine(this);
@@ -135,6 +148,7 @@ export class Game {
     this.camera.updateProjectionMatrix();
     // The cockpit window is cut to the frustum, so it is re-cut on resize.
     if (this.sub && this.sub.layoutCockpit) this.sub.layoutCockpit();
+    if (this.post) this.post.setSize();
   }
 
   /* ===================================================================== */
@@ -180,6 +194,7 @@ export class Game {
     // the drydock would make the station feel like a different program.
     this.sub.update(live ? dt : 0);
     this.world.update(dt, this.camera.getWorldPosition(_worldEye));
+    this.sky.update(dt, _worldEye);
     if (this.mode === "dive") {
       this.fish.update(dt);
       this.creatures.update(dt);
@@ -198,7 +213,18 @@ export class Game {
     this.saveTimer -= dt;
     if (this.dirty && this.saveTimer <= 0) this.persist(true);
 
-    this.renderer.render(this.scene, this.camera);
+    if (this.post) {
+      try {
+        this.post.render(this.scene, this.camera, dt);
+      } catch (err) {
+        console.warn("post-processing failed, drawing direct from now on", err);
+        this.post = null;
+        this.renderer.setRenderTarget(null);
+        this.renderer.render(this.scene, this.camera);
+      }
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   /* ===================================================================== */
@@ -494,7 +520,7 @@ export class Game {
     document.removeEventListener("visibilitychange", this._onVisibility);
     window.removeEventListener("pagehide", this._onUnload);
 
-    for (const system of [this.hud, this.audio, this.combat, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.water, this.ecology]) {
+    for (const system of [this.hud, this.audio, this.combat, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
       try {
         if (system && system.dispose) system.dispose();
       } catch (err) {

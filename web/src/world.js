@@ -12,7 +12,7 @@
 
 import * as THREE from "three";
 import { SCENERY, SEA, ZONES, zoneForDepth } from "./config.js";
-import { mergeGeometries } from "./geo.js";
+import { mergeGeometries, weldVertices } from "./geo.js";
 import {
   TAU,
   clamp,
@@ -45,7 +45,6 @@ const ONE = new THREE.Vector3(1, 1, 1);
 const ZONE_FADE = 1.5;          // seconds to cross-fade fog and light
 const SNOW_COUNT = 3000;        // marine snow budget
 const SNOW_BOX = 110;           // cube of snow recycled around the camera
-const SWAY_RANGE = 190;         // only sway clumps this close to the eye
 const LAYER_SLACK = 440;        // hide a flora band this far outside the view
 
 /* Radius -> fraction of the shelf..trench span. The shape of the whole sea in
@@ -260,16 +259,6 @@ function mergeGeos(list) {
   return out;
 }
 
-/* Push a geometry's vertices around so no two boulders are the same boulder. */
-function jitterGeometry(geo, rng, amount) {
-  const pos = geo.attributes.position;
-  for (let i = 0; i < pos.count; i += 1) {
-    const k = 1 + randRange(rng, -amount, amount);
-    pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * k * 0.82, pos.getZ(i) * k);
-  }
-  geo.computeVertexNormals();
-  return geo;
-}
 
 /* Place a geometry by position/rotation/scale without leaving a matrix behind. */
 function placeGeo(geo, x, y, z, dir, scale) {
@@ -283,77 +272,8 @@ function placeGeo(geo, x, y, z, dir, scale) {
 
 /* ------------------------------------------------------------ flora makers */
 
-/* A branching coral head: tapered tubes splitting twice. Low segment counts,
-   because there will be hundreds of these and they are mostly silhouette. */
-function buildCoral(rng, lowHex, highHex) {
-  const segs = [];
-  const grow = (origin, dir, length, radius, level) => {
-    const tube = new THREE.CylinderGeometry(radius * 0.6, radius, length, 5, 1, true);
-    tube.translate(0, length / 2, 0);
-    _q1.setFromUnitVectors(UP, dir);
-    _m1.compose(origin, _q1, ONE);
-    tube.applyMatrix4(_m1);
-    segs.push(tube);
-    if (level <= 0) return;
-    const tip = origin.clone().addScaledVector(dir, length * 0.96);
-    const forks = 2 + rng.randrange(2);
-    for (let i = 0; i < forks; i += 1) {
-      const axis = new THREE.Vector3(
-        randRange(rng, -1, 1),
-        randRange(rng, -0.3, 0.3),
-        randRange(rng, -1, 1),
-      ).normalize();
-      const next = dir.clone().applyAxisAngle(axis, randRange(rng, 0.34, 0.86));
-      next.y = Math.abs(next.y) * 0.65 + 0.35;
-      next.normalize();
-      grow(tip, next, length * randRange(rng, 0.56, 0.78), radius * 0.62, level - 1);
-    }
-  };
-  grow(
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(randRange(rng, -0.12, 0.12), 1, randRange(rng, -0.12, 0.12)).normalize(),
-    randRange(rng, 1.05, 1.7),
-    randRange(rng, 0.15, 0.23),
-    2,
-  );
-  return paintByHeight(mergeGeos(segs), lowHex, highHex, 0.18);
-}
 
-/* A sea fan: one flat blade, waisted at the stalk, bowed out of plane so it
-   catches the light edge-on instead of vanishing. */
-function buildFan(rng, lowHex, highHex) {
-  const geo = new THREE.PlaneGeometry(1.5, 1.9, 6, 7);
-  geo.translate(0, 0.95, 0);
-  const pos = geo.attributes.position;
-  const bow = randRange(rng, 0.16, 0.34);
-  for (let i = 0; i < pos.count; i += 1) {
-    const y = pos.getY(i);
-    const t = clamp01(y / 1.9);
-    // Narrow at the holdfast, widest around two thirds up, rounded at the top.
-    const width = Math.sin(Math.pow(t, 0.62) * Math.PI * 0.92) * 1.05 + 0.08;
-    pos.setX(i, pos.getX(i) * width);
-    pos.setZ(i, Math.sin(t * 2.1) * bow);
-  }
-  geo.computeVertexNormals();
-  return paintByHeight(geo, lowHex, highHex, 0.14);
-}
 
-/* A kelp blade: a ribbon that already leans, so a clump of them at slightly
-   different yaws reads as a current even before anything moves. */
-function buildKelpBlade(rng) {
-  const height = randRange(rng, 9, 17);
-  const geo = new THREE.PlaneGeometry(0.52, height, 1, 8);
-  geo.translate(0, height / 2, 0);
-  const pos = geo.attributes.position;
-  const lean = randRange(rng, 0.08, 0.2);
-  for (let i = 0; i < pos.count; i += 1) {
-    const t = clamp01(pos.getY(i) / height);
-    pos.setX(i, pos.getX(i) * (0.45 + 1.15 * Math.sin(Math.pow(t, 0.7) * Math.PI * 0.85)));
-    pos.setZ(i, pos.getZ(i) + t * t * height * lean);
-  }
-  geo.computeVertexNormals();
-  return paintByHeight(geo, 0x16351f, 0x6f9a44, 0.22);
-}
 
 /* Tube worms: a fist of stiff tubes with a lit crown. Returns the dark body
    and the additive crowns separately so they can share instance matrices. */
@@ -387,54 +307,458 @@ function buildWorms(rng, tubeLow, tubeHigh) {
 }
 
 /* A wreck. Nobody says whose. Half a hull, some ribs, a mast that went over. */
-/* A boulder: two to four lumps welded together and flattened, so a field of
-   them reads as broken rock rather than a bag of potatoes. Unit radius, so an
-   instance scale is roughly its size in metres. */
-function buildBoulder(rng) {
-  const parts = [];
-  const lumps = 2 + rng.randrange(3);
-  for (let i = 0; i < lumps; i += 1) {
-    const r = i === 0 ? 1 : randRange(rng, 0.42, 0.78);
-    const lump = jitterGeometry(new THREE.IcosahedronGeometry(r, 1), rng, 0.34);
-    lump.scale(randRange(rng, 0.9, 1.2), randRange(rng, 0.78, 1.05), randRange(rng, 0.9, 1.2));
-    if (i > 0) {
-      const a = rng.random() * TAU;
-      const d = randRange(rng, 0.5, 0.95);
-      lump.translate(Math.cos(a) * d, randRange(rng, -0.25, 0.3), Math.sin(a) * d);
-    }
-    parts.push(lump);
-  }
-  const merged = mergeGeometries(parts);
-  for (const g of parts) g.dispose();
-  return paintByHeight(merged, 0x0a0d12, 0x77756b, 0.26);
+
+
+/* ------------------------------------------------------------ scenery kit --
+   Build-time noise and the rock and coral shapes. Nothing here runs per frame,
+   so it is written for clarity over speed. */
+
+function hash3(x, y, z, seed) {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(z, 1274126177) + Math.imul(seed, 144269504)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
 
-/* A coral tower: a stack of lobes narrowing upward, with a few arms off it.
-   Unit height, so an instance scale is its height in metres. */
-function buildCoralTower(rng) {
+function noise3(x, y, z, seed) {
+  const xi = Math.floor(x);
+  const yi = Math.floor(y);
+  const zi = Math.floor(z);
+  const fx = x - xi;
+  const fy = y - yi;
+  const fz = z - zi;
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fy * fy * (3 - 2 * fy);
+  const w = fz * fz * (3 - 2 * fz);
+  const c = (dx, dy, dz) => hash3(xi + dx, yi + dy, zi + dz, seed);
+  const x00 = lerp(c(0, 0, 0), c(1, 0, 0), u);
+  const x10 = lerp(c(0, 1, 0), c(1, 1, 0), u);
+  const x01 = lerp(c(0, 0, 1), c(1, 0, 1), u);
+  const x11 = lerp(c(0, 1, 1), c(1, 1, 1), u);
+  return lerp(lerp(x00, x10, v), lerp(x01, x11, v), w) * 2 - 1;
+}
+
+function fbm3(x, y, z, seed, octaves = 4) {
+  let sum = 0;
+  let amp = 1;
+  let norm = 0;
+  let f = 1;
+  for (let i = 0; i < octaves; i += 1) {
+    sum += noise3(x * f, y * f, z * f, seed + i * 31) * amp;
+    norm += amp;
+    amp *= 0.5;
+    f *= 2.07;
+  }
+  return sum / norm;
+}
+
+/* Vivid on purpose: the shelf is lit by the sun and should look like a reef.
+   Depth does the rest — red goes first, so a coral that is scarlet at 20 m is
+   brown at 80 and blue-grey at 200, which is exactly how it looks down there. */
+const REEF_PALETTES = [
+  [0x4a1530, 0xff7aa8],
+  [0x4d2310, 0xffa257],
+  [0x281a52, 0xb792ff],
+  [0x4f420d, 0xffe070],
+  [0x0c403c, 0x5ff0c8],
+  [0x4f0f16, 0xff5d62],
+  [0x14345a, 0x80ccff],
+];
+
+function paintSolid(geo, colour, jitter, rng) {
+  const count = geo.attributes.position.count;
+  const colors = new Float32Array(count * 3);
+  for (let i = 0; i < count; i += 1) {
+    const k = 1 - jitter * 0.5 + rng.random() * jitter;
+    colors[i * 3] = colour.r * k;
+    colors[i * 3 + 1] = colour.g * k;
+    colors[i * 3 + 2] = colour.b * k;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  return geo;
+}
+
+/* A boulder. A welded sphere pushed around by three scales of noise — big
+   lumps, mid knuckles, and cracks cut in with ridged noise — then squashed and
+   given a flat seat so it sits in the silt instead of on it. Colour is baked
+   ambient occlusion: dark in the hollows and underneath, pale on the tops,
+   which is what makes a grey shape read as a heavy one. The band tint comes
+   from the instance colour; moss comes from the shader. */
+function buildBoulder(rng, detail = 3) {
+  const seed = rng.randrange(1 << 30);
+  const geo = weldVertices(new THREE.IcosahedronGeometry(1, detail));
+  const pos = geo.attributes.position;
+  const disp = new Float32Array(pos.count);
+  const sx = randRange(rng, 0.85, 1.25);
+  const sz = randRange(rng, 0.85, 1.25);
+  const squash = randRange(rng, 0.62, 0.86);
+  let mean = 0;
+  for (let i = 0; i < pos.count; i += 1) {
+    _v1.set(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
+    const x = _v1.x;
+    const y = _v1.y;
+    const z = _v1.z;
+    let d = fbm3(x * 1.25, y * 1.25, z * 1.25, seed, 3) * 0.3;
+    d += fbm3(x * 3.1, y * 3.1, z * 3.1, seed + 7, 3) * 0.11;
+    d -= Math.pow(1 - Math.abs(noise3(x * 5.2, y * 5.2, z * 5.2, seed + 13)), 6) * 0.07;
+    d += Math.sin(y * 17 + noise3(x * 2, y * 2, z * 2, seed + 19) * 3) * 0.012;
+    disp[i] = d;
+    mean += d;
+    const r = 1 + d;
+    let py = y * r * squash;
+    if (py < -0.32) py = -0.32 + (py + 0.32) * 0.25;
+    pos.setXYZ(i, x * r * sx, py, z * r * sz);
+  }
+  mean /= pos.count;
+  geo.computeVertexNormals();
+
+  const nrm = geo.attributes.normal;
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i += 1) {
+    const hollow = clamp01(0.62 + (disp[i] - mean) * 2.6);
+    const up = nrm.getY(i);
+    const top = lerp(0.42, 1.05, smoothstep(-0.7, 0.75, up));
+    const speck = 0.9 + hash3(i, 3, 7, seed) * 0.2;
+    const v = hollow * top * speck;
+    // A faint warm/cool split so a rock face is not one flat grey.
+    colors[i * 3] = v * 0.96;
+    colors[i * 3 + 1] = v * 0.95;
+    colors[i * 3 + 2] = v * 0.9;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  return geo;
+}
+
+/* Staghorn: a stem that forks, and forks again, and ends in pale growing
+   tips. The tips are the brightest thing on it, as they are on the real one. */
+function buildBranchCoral(rng, palette, levels = 3) {
+  const base = new THREE.Color(palette[0]);
+  const tip = new THREE.Color(palette[1]);
   const parts = [];
-  const lobes = 5 + rng.randrange(4);
-  for (let i = 0; i < lobes; i += 1) {
-    const t = i / lobes;
-    const r = lerp(0.30, 0.08, t) * randRange(rng, 0.8, 1.25);
-    const lobe = jitterGeometry(new THREE.IcosahedronGeometry(r, 1), rng, 0.3);
-    lobe.scale(1, randRange(rng, 0.7, 1.3), 1);
-    lobe.translate(randRange(rng, -0.06, 0.06), t * 0.92 + r * 0.5, randRange(rng, -0.06, 0.06));
-    parts.push(lobe);
+  const colour = new THREE.Color();
+  const grow = (origin, dir, len, rad, level) => {
+    const t = 1 - level / levels;
+    const seg = new THREE.CylinderGeometry(rad * 0.74, rad, len, 6, 1, true);
+    seg.translate(0, len / 2, 0);
+    _q1.setFromUnitVectors(UP, dir);
+    _m1.compose(origin, _q1, ONE);
+    seg.applyMatrix4(_m1);
+    parts.push(paintSolid(seg, colour.lerpColors(base, tip, 0.25 + t * 0.55), 0.12, rng));
+    const end = origin.clone().addScaledVector(dir, len);
+    if (level <= 0) {
+      const cap = new THREE.SphereGeometry(rad * 0.85, 5, 3);
+      cap.translate(end.x, end.y, end.z);
+      parts.push(paintSolid(cap, colour.copy(tip).multiplyScalar(1.12), 0.08, rng));
+      return;
+    }
+    const forks = 2 + rng.randrange(2);
+    for (let i = 0; i < forks; i += 1) {
+      const axis = new THREE.Vector3(randRange(rng, -1, 1), randRange(rng, -0.25, 0.25), randRange(rng, -1, 1)).normalize();
+      const next = dir.clone().applyAxisAngle(axis, randRange(rng, 0.38, 0.82));
+      next.y = Math.abs(next.y) * 0.7 + 0.3;
+      next.normalize();
+      grow(end, next, len * randRange(rng, 0.6, 0.8), rad * 0.66, level - 1);
+    }
+  };
+  grow(
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(randRange(rng, -0.15, 0.15), 1, randRange(rng, -0.15, 0.15)).normalize(),
+    randRange(rng, 0.5, 0.72),
+    randRange(rng, 0.09, 0.13),
+    levels,
+  );
+  return mergeGeos(parts);
+}
+
+/* Brain coral: a low dome ploughed with meandering grooves. The grooves are
+   darker and the ridges catch the light, so it reads from ten metres off. */
+function buildBrainCoral(rng, palette, detail = 3) {
+  const seed = rng.randrange(1 << 30);
+  const base = new THREE.Color(palette[0]);
+  // Ridges pale toward bone, but not all the way: under the lamps a near-white
+  // dome blows out to a blank shape.
+  const ridge = new THREE.Color(palette[1]).lerp(new THREE.Color(0xd8ccb0), 0.15).multiplyScalar(0.82);
+  const geo = weldVertices(new THREE.IcosahedronGeometry(1, detail));
+  const pos = geo.attributes.position;
+  const groove = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i += 1) {
+    _v1.set(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
+    const { x, y, z } = _v1;
+    const u = x * 10 + noise3(x * 2.4, y * 2.4, z * 2.4, seed) * 2.2;
+    const w = z * 10 + noise3(x * 2.4 + 5, y * 2.4, z * 2.4, seed) * 2.2;
+    const g = Math.abs(Math.sin(u) * Math.cos(w) + Math.sin(w * 0.7 + u * 0.45) * 0.55);
+    const cut = 1 - smoothstep(0, 0.28, g);
+    groove[i] = cut;
+    const r = 1 - cut * 0.06 + fbm3(x * 1.6, y * 1.6, z * 1.6, seed + 3, 2) * 0.08;
+    const py = Math.max(y * r, -0.06) * 0.72;
+    pos.setXYZ(i, x * r, py, z * r);
   }
-  // A couple of arms, so the silhouette is not a cone.
-  const arms = 1 + rng.randrange(3);
-  for (let i = 0; i < arms; i += 1) {
-    const a = rng.random() * TAU;
-    const h = randRange(rng, 0.3, 0.66);
-    const arm = jitterGeometry(new THREE.IcosahedronGeometry(randRange(rng, 0.09, 0.16), 1), rng, 0.3);
-    arm.scale(1, randRange(rng, 1.4, 2.6), 1);
-    arm.translate(Math.cos(a) * randRange(rng, 0.16, 0.3), h, Math.sin(a) * randRange(rng, 0.16, 0.3));
-    parts.push(arm);
+  geo.computeVertexNormals();
+  const colors = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i += 1) {
+    _c1.lerpColors(ridge, base, groove[i] * 0.85);
+    colors[i * 3] = _c1.r;
+    colors[i * 3 + 1] = _c1.g;
+    colors[i * 3 + 2] = _c1.b;
   }
-  const merged = mergeGeometries(parts);
-  for (const g of parts) g.dispose();
-  return paintByHeight(merged, 0x24202c, rng.random() < 0.5 ? 0xd4816f : 0x79c9b0, 0.26);
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geo.scale(0.62, 0.62, 0.62);
+  return geo.toNonIndexed();
+}
+
+/* Table coral: plates on a stalk, pale on top where the sun lands, dark under
+   the rim. Two or three tiers, each rim wavy so it does not read as a disc. */
+function buildTableCoral(rng, palette) {
+  const top = new THREE.Color(palette[1]).multiplyScalar(0.85);
+  const under = new THREE.Color(palette[0]);
+  const parts = [];
+  const stalk = new THREE.CylinderGeometry(0.06, 0.11, 0.5, 6, 1);
+  stalk.translate(0, 0.25, 0);
+  parts.push(paintSolid(stalk, under, 0.1, rng));
+  const tiers = 2 + rng.randrange(2);
+  for (let t = 0; t < tiers; t += 1) {
+    const r = randRange(rng, 0.45, 0.8) * (1 - t * 0.22);
+    const plate = new THREE.CylinderGeometry(r, r * 0.9, 0.045, 22, 1);
+    const pp = plate.attributes.position;
+    const phase = rng.random() * TAU;
+    const lobes = 4 + rng.randrange(4);
+    for (let i = 0; i < pp.count; i += 1) {
+      const x = pp.getX(i);
+      const z = pp.getZ(i);
+      const rr = Math.hypot(x, z);
+      if (rr > r * 0.7) {
+        const a = Math.atan2(z, x);
+        pp.setY(i, pp.getY(i) + Math.sin(a * lobes + phase) * 0.05 * (rr / r) + (rr / r) * 0.04);
+      }
+    }
+    plate.computeVertexNormals();
+    plate.translate(randRange(rng, -0.08, 0.08), 0.5 + t * 0.2, randRange(rng, -0.08, 0.08));
+    const colors = new Float32Array(pp.count * 3);
+    const nn = plate.attributes.normal;
+    for (let i = 0; i < pp.count; i += 1) {
+      _c1.lerpColors(under, top, smoothstep(-0.4, 0.6, nn.getY(i)));
+      colors[i * 3] = _c1.r;
+      colors[i * 3 + 1] = _c1.g;
+      colors[i * 3 + 2] = _c1.b;
+    }
+    plate.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    parts.push(plate);
+  }
+  return mergeGeos(parts);
+}
+
+/* Tube sponges: open-mouthed chimneys in a clump. Double-sided, so you can see
+   down the throat of the ones leaning toward you. */
+function buildTubeSponge(rng, palette) {
+  const parts = [];
+  const tubes = 3 + rng.randrange(4);
+  for (let i = 0; i < tubes; i += 1) {
+    const h = randRange(rng, 0.55, 1.35);
+    const r = randRange(rng, 0.07, 0.13);
+    const tube = new THREE.CylinderGeometry(r * 1.15, r * 0.85, h, 10, 3, true);
+    tube.translate(0, h / 2, 0);
+    tube.rotateZ(randRange(rng, -0.25, 0.25));
+    tube.rotateX(randRange(rng, -0.25, 0.25));
+    tube.translate(randRange(rng, -0.18, 0.18), 0, randRange(rng, -0.18, 0.18));
+    parts.push(paintByHeight(tube, palette[0], palette[1], 0.14));
+  }
+  return mergeGeos(parts);
+}
+
+/* Moss and crust on the tops of rocks, thick on the shelf where there is sun
+   to grow it and gone by the twilight. Done in the shader because it depends
+   on which way a face points in the world and how deep it is, and a boulder
+   instance can be anywhere. */
+function patchMoss(material) {
+  material.userData.shaderTag = "rock";
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vMossN;\nvarying vec3 vMossP;")
+      .replace("#include <project_vertex>", `#include <project_vertex>
+        vec4 mossP = vec4(transformed, 1.0);
+        vec3 mossN = objectNormal;
+        #ifdef USE_INSTANCING
+          mossP = instanceMatrix * mossP;
+          mossN = mat3(instanceMatrix) * mossN;
+        #endif
+        vMossP = (modelMatrix * mossP).xyz;
+        vMossN = normalize(mat3(modelMatrix) * mossN);`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vMossN;\nvarying vec3 vMossP;")
+      .replace("#include <color_fragment>", `#include <color_fragment>
+        {
+          float up = smoothstep(0.35, 0.85, normalize(vMossN).y);
+          float sun = 1.0 - smoothstep(30.0, 280.0, -vMossP.y);
+          float grain = fract(sin(dot(floor(vMossP.xz * 1.7), vec2(12.9898, 78.233))) * 43758.5453);
+          vec3 moss = mix(vec3(0.2, 0.34, 0.16), vec3(0.42, 0.46, 0.2), grain);
+          diffuseColor.rgb = mix(diffuseColor.rgb, moss * (0.8 + grain * 0.4), up * sun * 0.62);
+          // Deeper down the tops pale with silt instead.
+          float silt = up * smoothstep(200.0, 600.0, -vMossP.y);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.5, 0.48, 0.44), silt * 0.35);
+        }`);
+  };
+  return material;
+}
+
+/* Weed that moves. The blades are unit height, so position.y is how far up
+   the blade a vertex is; the tip travels most and the holdfast not at all.
+   Phase comes from where the instance stands, so a curtain ripples across
+   rather than nodding in unison. */
+function patchSway(material, time, amp = 1) {
+  material.userData.shaderTag = `sway:${amp}`;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSwayTime = time;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float uSwayTime;")
+      .replace("#include <begin_vertex>", `#include <begin_vertex>
+        {
+          vec3 swayAt = vec3(0.0);
+          #ifdef USE_INSTANCING
+            swayAt = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+          #endif
+          float h = clamp(position.y, 0.0, 1.2);
+          float bend = h * h;
+          float ph = uSwayTime * 0.85 + swayAt.x * 0.045 + swayAt.z * 0.038;
+          float amp = ${amp.toFixed(3)};
+          transformed.x += (sin(ph + position.y * 2.4) * 0.13 + sin(ph * 2.3 + position.y * 5.0) * 0.025) * bend * amp;
+          transformed.z += (cos(ph * 0.8 + position.y * 1.9) * 0.1) * bend * amp;
+        }`);
+  };
+  return material;
+}
+
+/* Giant kelp: a stipe with blades off it all the way up and a float at each
+   blade's root, unit height. About eighty triangles, because a cathedral of
+   it needs a lot of them and they all sway in the shader. */
+function buildKelpStalk(rng) {
+  const parts = [];
+  const stem = new THREE.Color(0x3a4a1c);
+  const leaf = new THREE.Color(0x6b7a24);
+  const lean = randRange(rng, 0.03, 0.1);
+  const stipe = new THREE.PlaneGeometry(0.018, 1, 1, 12);
+  stipe.translate(0, 0.5, 0);
+  const sp = stipe.attributes.position;
+  for (let i = 0; i < sp.count; i += 1) sp.setX(i, sp.getX(i) + sp.getY(i) * sp.getY(i) * lean);
+  stipe.computeVertexNormals();
+  parts.push(paintSolid(stipe, stem, 0.1, rng));
+  const blades = 9 + rng.randrange(5);
+  for (let i = 0; i < blades; i += 1) {
+    const y = 0.12 + (i / blades) * 0.86;
+    const len = randRange(rng, 0.09, 0.17) * (1.2 - y * 0.4);
+    const blade = new THREE.PlaneGeometry(len, 0.035, 3, 1);
+    blade.translate(len / 2, 0, 0);
+    const bp = blade.attributes.position;
+    for (let k = 0; k < bp.count; k += 1) {
+      const t = bp.getX(k) / len;
+      bp.setY(k, bp.getY(k) * Math.sin(Math.PI * Math.min(1, t * 1.1 + 0.05)) - t * t * 0.03);
+    }
+    blade.rotateY(rng.random() * TAU);
+    blade.rotateZ(-0.35);
+    blade.translate(y * y * lean, y, 0);
+    blade.computeVertexNormals();
+    _c1.copy(leaf).lerp(stem, rng.random() * 0.4);
+    parts.push(paintSolid(blade, _c1, 0.15, rng));
+  }
+  return mergeGeos(parts);
+}
+
+/* A sea fan: a flat lattice of branches grown in one plane, darker at the
+   holdfast and bright at the rim, unit height. */
+function buildSeaFan(rng, palette) {
+  const base = new THREE.Color(palette[0]);
+  const rim = new THREE.Color(palette[1]);
+  const parts = [];
+  const colour = new THREE.Color();
+  const grow = (x, y, angle, len, width, level) => {
+    const seg = new THREE.PlaneGeometry(width, len, 1, 2);
+    seg.translate(0, len / 2, 0);
+    seg.rotateZ(angle);
+    seg.translate(x, y, 0);
+    const t = clamp01(y + len * 0.5);
+    parts.push(paintSolid(seg, colour.lerpColors(base, rim, t), 0.12, rng));
+    if (level <= 0) return;
+    const ex = x - Math.sin(angle) * len;
+    const ey = y + Math.cos(angle) * len;
+    const forks = 2 + (rng.random() < 0.3 ? 1 : 0);
+    for (let i = 0; i < forks; i += 1) {
+      const spread = (i - (forks - 1) / 2) * randRange(rng, 0.35, 0.6);
+      grow(ex, ey, angle * 0.6 + spread, len * randRange(rng, 0.7, 0.85), width * 0.72, level - 1);
+    }
+  };
+  grow(0, 0, randRange(rng, -0.1, 0.1), 0.26, 0.035, 4);
+  const geo = mergeGeos(parts);
+  geo.computeBoundingBox();
+  const h = geo.boundingBox.max.y || 1;
+  geo.scale(1 / h, 1 / h, 1 / h);
+  return geo;
+}
+
+/* One of the four, in a reef palette. */
+function buildCoral(rng, palette, detail = 2) {
+  const pal = palette || REEF_PALETTES[rng.randrange(REEF_PALETTES.length)];
+  const kind = rng.randrange(4);
+  if (kind === 0) return buildBranchCoral(rng, pal, detail);
+  if (kind === 1) return buildBrainCoral(rng, pal, detail);
+  if (kind === 2) return buildTableCoral(rng, pal);
+  return buildTubeSponge(rng, pal);
+}
+
+/* A reef bommie. A single displaced column always read as a lump, however it
+   was coloured, because a real bommie is not a rock with coral on it — it is
+   a mound built out of coral heads, generation on generation, with the rock
+   underneath mostly hidden. So that is how this is made: a rough core, then
+   rings of brain, table, branching and sponge coral stacked up it, big and
+   flat at the foot, smaller and branchier toward the crown. Unit height. */
+function buildCoralTower(rng) {
+  const seed = rng.randrange(1 << 30);
+  const parts = [];
+
+  const core = weldVertices(new THREE.ConeGeometry(0.36, 0.86, 10, 5));
+  const kp = core.attributes.position;
+  for (let i = 0; i < kp.count; i += 1) {
+    const x = kp.getX(i);
+    const y = kp.getY(i);
+    const z = kp.getZ(i);
+    const k = 1 + noise3(x * 6, y * 6, z * 6, seed) * 0.25;
+    kp.setXYZ(i, x * k, y + 0.43, z * k);
+  }
+  core.computeVertexNormals();
+  parts.push(paintSolid(core.toNonIndexed(), new THREE.Color(0x4a4239), 0.3, rng));
+
+  // [height up the mound, radius out from the axis, heads in the ring, scale]
+  const rings = [
+    [0.06, 0.36, 5, 0.3],
+    [0.3, 0.29, 5, 0.25],
+    [0.55, 0.2, 3, 0.22],
+    [0.76, 0.11, 2, 0.2],
+    [0.9, 0.0, 1, 0.22],
+  ];
+  const kinds = [
+    (pal) => buildBrainCoral(rng, pal, 1),
+    (pal) => buildTableCoral(rng, pal),
+    (pal) => buildBranchCoral(rng, pal, 2),
+    (pal) => buildTubeSponge(rng, pal),
+  ];
+  for (let r = 0; r < rings.length; r += 1) {
+    const [y01, radius, count, scale] = rings[r];
+    const spin = rng.random() * TAU;
+    for (let k = 0; k < count; k += 1) {
+      const a = spin + (k / count) * TAU + randRange(rng, -0.25, 0.25);
+      // The foot is brains and tables; the crown is branches and sponges.
+      const pick = r < 2 ? rng.randrange(2) : 2 + rng.randrange(2);
+      const piece = kinds[pick](REEF_PALETTES[rng.randrange(REEF_PALETTES.length)]);
+      const sc = scale * randRange(rng, 0.8, 1.2);
+      _v1.set(Math.cos(a) * radius, y01, Math.sin(a) * radius);
+      const out = radius > 0.01 ? 0.55 : 0;
+      _v2.set(Math.cos(a) * out, 1, Math.sin(a) * out).normalize();
+      _q1.setFromUnitVectors(UP, _v2);
+      _v3.set(sc, sc, sc);
+      _m1.compose(_v1, _q1, _v3);
+      piece.applyMatrix4(_m1);
+      parts.push(piece);
+    }
+  }
+  return mergeGeos(parts);
 }
 
 /* A curtain of weed: a handful of tall ribbons on one base, so a patch of them
@@ -622,8 +946,8 @@ export class SeaWorld {
 
     this._buildLights();
     this._buildTerrain();
-    this._buildSurface();
-    this._buildGodRays();
+    /* The old underside sheet and the hanging light cones are gone: sky.js
+       owns the surface now, from both sides, and there is a sky above it. */
     this._buildFlora();
     this._buildSnow();
     this._buildStation();
@@ -1030,98 +1354,7 @@ export class SeaWorld {
 
   /* -------------------------------------------------------------- surface */
 
-  _buildSurface() {
-    this.surfaceGroup = new THREE.Group();
-    this.surfaceGroup.matrixAutoUpdate = false;
 
-    const geo = this._geo(new THREE.PlaneGeometry(2800, 2800, 40, 40));
-    geo.rotateX(Math.PI / 2);          // faces down, which is the only way we see it
-    this.surfaceGeometry = geo;
-    this.surfaceBase = Float32Array.from(geo.attributes.position.array);
-
-    this.surfaceMaterial = this._mat(new THREE.MeshBasicMaterial({
-      color: 0x9fd9e8,
-      transparent: true,
-      opacity: 0.5,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      fog: true,
-    }));
-    this.surfaceMesh = new THREE.Mesh(geo, this.surfaceMaterial);
-    this.surfaceMesh.renderOrder = -2;
-    this.surfaceGroup.add(this.surfaceMesh);
-
-    /* A second sheet just below, carrying the caustics, scrolling the other
-       way. Two speeds is the whole trick: one is a texture, two is water. */
-    const causticGeo = this._geo(new THREE.PlaneGeometry(2800, 2800, 1, 1));
-    causticGeo.rotateX(Math.PI / 2);
-    causticGeo.translate(0, -0.8, 0);
-    const causticMap = this.causticTexture.clone();
-    causticMap.wrapS = THREE.RepeatWrapping;
-    causticMap.wrapT = THREE.RepeatWrapping;
-    causticMap.repeat.set(26, 26);
-    causticMap.needsUpdate = true;
-    this.causticMap = this._track(causticMap, this._textures);
-    this.causticMaterial = this._mat(new THREE.MeshBasicMaterial({
-      map: causticMap,
-      color: 0xcdf3ff,
-      transparent: true,
-      opacity: 0.3,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      fog: true,
-    }));
-    this.causticMesh = new THREE.Mesh(causticGeo, this.causticMaterial);
-    this.causticMesh.renderOrder = -1;
-    this.surfaceGroup.add(this.causticMesh);
-
-    this.group.add(this.surfaceGroup);
-  }
-
-  _buildGodRays() {
-    this.rayRig = new THREE.Group();
-    this.rayRig.position.set(0, -70, 0);
-
-    const geo = this._geo(new THREE.ConeGeometry(30, 190, 6, 1, true));
-    /* Bright where it enters the water, gone before it reaches the floor. */
-    const pos = geo.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    for (let i = 0; i < pos.count; i += 1) {
-      const t = clamp01((pos.getY(i) + 95) / 190);
-      const v = Math.pow(t, 2.1);
-      colors[i * 3] = v;
-      colors[i * 3 + 1] = v;
-      colors[i * 3 + 2] = v;
-    }
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-
-    this.rayMaterial = this._mat(new THREE.MeshBasicMaterial({
-      color: 0xbfe6ff,
-      vertexColors: true,
-      transparent: true,
-      opacity: 0.07,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-      fog: true,
-    }));
-
-    this.rays = [];
-    const rng = makeRng(this.seed, "godrays");
-    for (let i = 0; i < 6; i += 1) {
-      const mesh = new THREE.Mesh(geo, this.rayMaterial);
-      const a = (i / 6) * TAU + rng.random() * 0.6;
-      const rad = randRange(rng, 18, 62);
-      mesh.position.set(Math.cos(a) * rad, randRange(rng, -12, 18), Math.sin(a) * rad);
-      mesh.rotation.set(randRange(rng, -0.13, 0.13), rng.random() * TAU, randRange(rng, -0.13, 0.13));
-      mesh.scale.set(randRange(rng, 0.6, 1.35), randRange(rng, 0.8, 1.25), randRange(rng, 0.6, 1.35));
-      mesh.renderOrder = 2;
-      this.rays.push({ mesh, spin: randRange(rng, -0.045, 0.045) });
-      this.rayRig.add(mesh);
-    }
-    this.group.add(this.rayRig);
-  }
 
   /* --------------------------------------------------------------- lights */
 
@@ -1180,11 +1413,7 @@ export class SeaWorld {
 
   _buildFlora() {
     this.layers = [];
-    this.swayers = [];
 
-    this._buildCoralField();
-    this._buildFanField();
-    this._buildKelpField();
     this._buildWormField();
     this._buildPolypField();
     this._buildRockField();
@@ -1192,180 +1421,8 @@ export class SeaWorld {
     this._buildWreckField();
   }
 
-  _buildCoralField() {
-    const rng = makeRng(this.seed, "coral");
-    const root = new THREE.Group();
-    root.name = "coral";
-    const material = this._mat(new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.85,
-      metalness: 0,
-      side: THREE.DoubleSide,
-      fog: true,
-    }));
-    const palettes = [
-      [0x2d1c2a, 0xe08a7a],
-      [0x1b2a2c, 0x7fd8c4],
-      [0x2b2417, 0xe2c073],
-    ];
-    /* Three draw calls whatever the count, so density is nearly free here.
-       At 150 each the shelf read as bare sand — a reef has to look like one. */
-    const per = 620;
-    for (let v = 0; v < palettes.length; v += 1) {
-      const geo = this._geo(buildCoral(rng, palettes[v][0], palettes[v][1]));
-      const mesh = new THREE.InstancedMesh(geo, material, per);
-      mesh.frustumCulled = false;
-      let i = 0;
-      this._scatter(rng, per, 14, 140, 0.78, 34, (x, y, z, depth, normal) => {
-        const s = randRange(rng, 0.7, 2.3) * lerp(1.15, 0.7, smoothstep(20, 140, depth));
-        _e1.set(randRange(rng, -0.16, 0.16), rng.random() * TAU, randRange(rng, -0.16, 0.16));
-        _q1.setFromEuler(_e1);
-        _v1.set(x, y - 0.2, z);
-        _v2.set(s, s * randRange(rng, 0.85, 1.3), s);
-        _m1.compose(_v1, _q1, _v2);
-        mesh.setMatrixAt(i, _m1);
-        _c1.setHex(0xffffff).multiplyScalar(randRange(rng, 0.72, 1.2));
-        mesh.setColorAt(i, _c1);
-        i += 1;
-      });
-      mesh.count = i;
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      root.add(mesh);
-    }
-    this._addLayer(root, 0, 150);
-  }
 
-  _buildFanField() {
-    const rng = makeRng(this.seed, "fans");
-    const root = new THREE.Group();
-    root.name = "fans";
-    const material = this._mat(new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.7,
-      metalness: 0,
-      side: THREE.DoubleSide,
-      fog: true,
-    }));
-    const geo = this._geo(buildFan(rng, 0x241a26, 0xd3708f));
 
-    /* Fans live in clumps so a clump can sway as one object — twelve matrix
-       writes a frame instead of three hundred. */
-    /* One draw call per clump, and the layer only draws above 130 m, so this
-       can afford to be a real field. Twelve clumps put the nearest fan most of
-       a kilometre away, which is the same as having none. */
-    const clumps = 130;
-    const per = 26;
-    const centres = [];
-    this._scatter(rng, clumps, 16, 120, 0.8, 60, (x, y, z) => {
-      centres.push([x, y, z]);
-    });
-    for (const [cx, cy, cz] of centres) {
-      const pivot = new THREE.Group();
-      pivot.position.set(cx, cy, cz);
-      const mesh = new THREE.InstancedMesh(geo, material, per);
-      mesh.frustumCulled = false;
-      let i = 0;
-      for (let k = 0; k < per; k += 1) {
-        const a = rng.random() * TAU;
-        const rad = Math.sqrt(rng.random()) * 11;
-        const x = cx + Math.cos(a) * rad;
-        const z = cz + Math.sin(a) * rad;
-        const y = this.heightAt(x, z);
-        if (-y < 8) continue;
-        const s = randRange(rng, 0.8, 2.1);
-        _e1.set(randRange(rng, -0.2, 0.2), rng.random() * TAU, randRange(rng, -0.2, 0.2));
-        _q1.setFromEuler(_e1);
-        _v1.set(x - cx, y - cy - 0.15, z - cz);
-        _v2.set(s, s * randRange(rng, 0.9, 1.4), s);
-        _m1.compose(_v1, _q1, _v2);
-        mesh.setMatrixAt(i, _m1);
-        _c1.setHex(0xffffff).multiplyScalar(randRange(rng, 0.7, 1.25));
-        mesh.setColorAt(i, _c1);
-        i += 1;
-      }
-      mesh.count = i;
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      pivot.add(mesh);
-      root.add(pivot);
-      this.swayers.push({
-        obj: pivot,
-        phase: rng.random() * TAU,
-        rate: randRange(rng, 0.35, 0.6),
-        amp: randRange(rng, 0.02, 0.045),
-        active: false,
-      });
-    }
-    this._addLayer(root, 0, 130);
-  }
-
-  _buildKelpField() {
-    const rng = makeRng(this.seed, "kelp");
-    const root = new THREE.Group();
-    root.name = "kelp";
-    const material = this._mat(new THREE.MeshStandardMaterial({
-      vertexColors: true,
-      roughness: 0.62,
-      metalness: 0,
-      side: THREE.DoubleSide,
-      fog: true,
-    }));
-
-    /* Four blade shapes shared across every clump: enough variety to break the
-       repeat, few enough that the GPU keeps them all resident. */
-    const blades = [];
-    for (let i = 0; i < 4; i += 1) blades.push(this._geo(buildKelpBlade(rng)));
-
-    const centres = [];
-    this._scatter(rng, 165, 70, 260, 0.78, 70, (x, y, z) => centres.push([x, y, z]));
-
-    /* One blade shape per clump rather than all four: the variety moves from
-       inside a clump to between clumps, and a stand of kelp costs one draw call
-       instead of four. That is what pays for there being enough of them to
-       deserve the name Kelp Cathedral. */
-    for (const [cx, cy, cz] of centres) {
-      const pivot = new THREE.Group();
-      pivot.position.set(cx, cy, cz);
-      {
-        const b = rng.randrange(blades.length);
-        const per = 40;
-        const mesh = new THREE.InstancedMesh(blades[b], material, per);
-        mesh.frustumCulled = false;
-        let i = 0;
-        for (let k = 0; k < per; k += 1) {
-          const a = rng.random() * TAU;
-          const rad = Math.sqrt(rng.random()) * 12;
-          const x = cx + Math.cos(a) * rad;
-          const z = cz + Math.sin(a) * rad;
-          const y = this.heightAt(x, z);
-          const s = randRange(rng, 0.72, 1.5);
-          _e1.set(randRange(rng, -0.07, 0.07), rng.random() * TAU, randRange(rng, -0.07, 0.07));
-          _q1.setFromEuler(_e1);
-          _v1.set(x - cx, y - cy - 0.4, z - cz);
-          _v2.set(s, s * randRange(rng, 0.8, 1.35), s);
-          _m1.compose(_v1, _q1, _v2);
-          mesh.setMatrixAt(i, _m1);
-          _c1.setHex(0xffffff).multiplyScalar(randRange(rng, 0.6, 1.25));
-          mesh.setColorAt(i, _c1);
-          i += 1;
-        }
-        mesh.count = i;
-        mesh.instanceMatrix.needsUpdate = true;
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-        pivot.add(mesh);
-      }
-      root.add(pivot);
-      this.swayers.push({
-        obj: pivot,
-        phase: rng.random() * TAU,
-        rate: randRange(rng, 0.22, 0.4),
-        amp: randRange(rng, 0.035, 0.075),
-        active: false,
-      });
-    }
-    this._addLayer(root, 60, 280);
-  }
 
   _buildWormField() {
     const rng = makeRng(this.seed, "worms");
@@ -1477,11 +1534,9 @@ export class SeaWorld {
       metalness: 0,
       fog: true,
     }));
+    patchMoss(material);
     const shapes = [];
-    for (let i = 0; i < 3; i += 1) {
-      const geo = jitterGeometry(new THREE.IcosahedronGeometry(1, 1), rng, 0.34);
-      shapes.push(this._geo(paintByHeight(geo, 0x0e1116, 0x6a6a63, 0.2)));
-    }
+    for (let i = 0; i < 3; i += 1) shapes.push(this._geo(buildBoulder(rng, 1)));
     const per = 300;
     for (const geo of shapes) {
       const mesh = new THREE.InstancedMesh(geo, material, per);
@@ -1541,6 +1596,21 @@ export class SeaWorld {
     const weedMat = this._mat(new THREE.MeshStandardMaterial({
       vertexColors: true, roughness: 0.6, metalness: 0, side: THREE.DoubleSide, fog: true,
     }));
+    this.swayTime = { value: 0 };
+    patchMoss(rockMat);
+    patchSway(weedMat, this.swayTime, 1);
+    const kelpMat = this._mat(new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.55, metalness: 0, side: THREE.DoubleSide, fog: true,
+    }));
+    patchSway(kelpMat, this.swayTime, 1.6);
+    const fanMat = this._mat(new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.7, metalness: 0, side: THREE.DoubleSide, fog: true,
+    }));
+    patchSway(fanMat, this.swayTime, 0.35);
+    if (this.game.water) {
+      this.game.water.register(kelpMat);
+      this.game.water.register(fanMat);
+    }
     if (this.game.water) {
       this.game.water.register(rockMat);
       this.game.water.register(coralMat);
@@ -1555,7 +1625,7 @@ export class SeaWorld {
         range: SCENERY.boulders,
         minDepth: 6,
         maxDepth: SEA.maxDepth + 400,
-        shapes: [0, 1, 2].map(() => this._geo(buildBoulder(rng))),
+        shapes: [0, 1, 2].map(() => this._geo(buildBoulder(rng, 6))),
         mesh: null,
       },
       {
@@ -1565,6 +1635,45 @@ export class SeaWorld {
         minDepth: 12,
         maxDepth: 340,
         shapes: [0, 1, 2].map(() => this._geo(buildCoralTower(rng))),
+        mesh: null,
+      },
+      {
+        /* The reef itself: branching, brain, table and sponge, in the reef
+           palettes. Streamed with the rest, so it is dense wherever you are
+           on the shelf instead of thinly spread across all of it. */
+        key: "reef",
+        max: SCENERY.maxReef,
+        range: SCENERY.reef,
+        minDepth: 6,
+        maxDepth: 190,
+        shapes: [0, 1, 2, 3, 4, 5].map((i) => {
+          const pal = REEF_PALETTES[(i * 3 + rng.randrange(REEF_PALETTES.length)) % REEF_PALETTES.length];
+          const kinds = [buildBranchCoral, buildBrainCoral, buildTableCoral, buildTubeSponge, buildBranchCoral, buildBrainCoral];
+          return this._geo(kinds[i](rng, pal, i === 1 || i === 5 ? 2 : 3));
+        }),
+        mesh: null,
+      },
+      {
+        // The Kelp Cathedral, in stands you can get lost in.
+        key: "kelp",
+        max: SCENERY.maxKelp,
+        range: SCENERY.kelp,
+        clump: [6, 16],
+        clumpRadius: 16,
+        minDepth: 45,
+        maxDepth: 300,
+        shapes: [0, 1, 2].map(() => this._geo(buildKelpStalk(rng))),
+        mesh: null,
+      },
+      {
+        key: "fans",
+        max: SCENERY.maxFans,
+        range: SCENERY.fans,
+        clump: [2, 6],
+        clumpRadius: 9,
+        minDepth: 10,
+        maxDepth: 170,
+        shapes: [0, 1, 2].map((i) => this._geo(buildSeaFan(rng, REEF_PALETTES[(i * 2 + 1) % REEF_PALETTES.length]))),
         mesh: null,
       },
       {
@@ -1578,7 +1687,7 @@ export class SeaWorld {
       },
     ];
 
-    const matFor = { boulders: rockMat, towers: coralMat, weed: weedMat };
+    const matFor = { boulders: rockMat, towers: coralMat, reef: coralMat, kelp: kelpMat, fans: fanMat, weed: weedMat };
     for (const kind of this.sceneryKinds) {
       // One mesh per shape so the whole field is nine draw calls, not nine
       // hundred, and each can be filled independently as cells come and go.
@@ -1620,9 +1729,31 @@ export class SeaWorld {
           const cr = makeRng(this.seed, kind.key, gx, gz);
           const [lo, hi] = kind.range;
           const want = lo + cr.randrange(Math.max(1, hi - lo + 1));
-          for (let i = 0; i < want; i += 1) {
-            const x = (gx + cr.random()) * cell;
-            const z = (gz + cr.random()) * cell;
+          // Clumped kinds place `want` clumps and a handful of members in each.
+          const members = kind.clump ? kind.clump : null;
+          let clumpX = 0;
+          let clumpZ = 0;
+          let left = 0;
+          const total = members ? want * members[1] : want;
+          for (let i = 0; i < total; i += 1) {
+            let x;
+            let z;
+            if (members) {
+              if (left <= 0) {
+                if (i / members[1] >= want) break;
+                clumpX = (gx + cr.random()) * cell;
+                clumpZ = (gz + cr.random()) * cell;
+                left = members[0] + cr.randrange(Math.max(1, members[1] - members[0] + 1));
+              }
+              left -= 1;
+              const a = cr.random() * TAU;
+              const rr = Math.sqrt(cr.random()) * kind.clumpRadius;
+              x = clumpX + Math.cos(a) * rr;
+              z = clumpZ + Math.sin(a) * rr;
+            } else {
+              x = (gx + cr.random()) * cell;
+              z = (gz + cr.random()) * cell;
+            }
             const r = Math.sqrt(x * x + z * z);
             if (r > SEA.worldRadius) continue;
 
@@ -1651,8 +1782,18 @@ export class SeaWorld {
               sc = randRange(cr, 8, 30);
               lean = 0.45;
             } else if (kind.key === "towers") {
-              sc = randRange(cr, 15, 45);
-              lean = 0.1;
+              sc = randRange(cr, 10, 30);
+              lean = 0.06;
+            } else if (kind.key === "kelp") {
+              sc = randRange(cr, 14, 34);
+              lean = 0.06;
+            } else if (kind.key === "fans") {
+              sc = randRange(cr, 1.4, 3.6);
+              lean = 0.12;
+            } else if (kind.key === "reef") {
+              // Bigger on the sunny shelf, smaller as the light runs out.
+              sc = randRange(cr, 1.6, 4.2) * lerp(1.2, 0.7, smoothstep(20, 180, depth));
+              lean = 0.18;
             } else {
               sc = randRange(cr, 13, 30);
               lean = 0.14;
@@ -1660,7 +1801,7 @@ export class SeaWorld {
 
             _e1.set(randRange(cr, -lean, lean), cr.random() * TAU, randRange(cr, -lean, lean));
             _q1.setFromEuler(_e1);
-            const sink = kind.key === "boulders" ? sc * randRange(cr, 0.16, 0.4) : 1.2;
+            const sink = kind.key === "boulders" ? sc * randRange(cr, 0.16, 0.4) : kind.key === "reef" || kind.key === "fans" ? 0.15 : kind.key === "kelp" ? 0.4 : 1.2;
             _v1.set(x, y - sink, z);
             const wobble = kind.key === "boulders" ? 0.14 : 0.3;
             _v2.set(
@@ -2028,13 +2169,8 @@ export class SeaWorld {
       }
       pushed = true;
     }
-    /* And the ceiling: the surface is not an exit. */
-    const ceiling = SEA.surfaceY - 2.5;
-    if (position.y > ceiling) {
-      position.y = ceiling;
-      if (velocity && velocity.y > 0) velocity.y *= -0.15;
-      pushed = true;
-    }
+    /* No ceiling here any more: the surface is an exit now, and the boat
+       floats on it (sub.js). This only ever reports the rim of the world. */
     return pushed;
   }
 
@@ -2106,7 +2242,6 @@ export class SeaWorld {
        a lit object floating in an unlit sea. */
     this.terrainMaterial.color.copy(_c1.setHex(0xffffff)).lerp(p.water, 0.22);
 
-    this.surfaceMaterial.color.copy(p.water).lerp(_c1.setHex(0xffffff), 0.62);
   }
 
   /* ---------------------------------------------------------------- update */
@@ -2126,17 +2261,18 @@ export class SeaWorld {
 
     const depth = Math.max(0, -cam.y);
 
+    if (this.swayTime) this.swayTime.value += dt;
     this._updateNear(cam);
     this._updateScenery(cam);
     this._updateSnow(dt, cam, depth);
-    this._updateSurface(dt, cam, depth);
-    this._updateRays(dt, cam, depth);
-    this._updateSway(t, cam);
     this._updateStation(t, cam);
     this._updateLayers(depth);
   }
 
   _updateSnow(dt, cam, depth) {
+    // Surfaced, there is no snow: it is a thing that happens in water.
+    const sky = this.game.sky;
+    if (this.snow) this.snow.visible = !(sky && sky.above);
     const snow = this.zone.snow;
     const positions = this.snowPositions;
     const fall = this.snowFall;
@@ -2177,74 +2313,8 @@ export class SeaWorld {
     this.snow.geometry.boundingSphere.center.set(cam.x, cam.y, cam.z);
   }
 
-  _updateSurface(dt, cam, depth) {
-    /* Below the twilight there is nothing up there worth drawing. */
-    const visible = depth < 240;
-    this.surfaceGroup.visible = visible;
-    if (!visible) return;
 
-    /* Light does not reach far. Caustics belong to the first few tens of
-       metres; past that the tiled pattern reads as a ceiling texture, which is
-       exactly the illusion the fog is supposed to be selling against. */
-    const fade = 1 - smoothstep(60, 220, depth);
-    const lit = 1 - smoothstep(18, 95, depth);
-    this.surfaceMaterial.opacity = 0.5 * fade;
-    this.causticMaterial.opacity = 0.34 * lit * lit;
 
-    this.causticMap.offset.x = (this.time * 0.008) % 1;
-    this.causticMap.offset.y = (this.time * 0.0054) % 1;
-
-    /* Displace the low-res sheet. Three waves is enough to stop it reading as
-       a ceiling; it is a basic material, so normals do not need redoing. */
-    const pos = this.surfaceGeometry.attributes.position;
-    const base = this.surfaceBase;
-    const t = this.time;
-    for (let i = 0; i < pos.count; i += 1) {
-      const k = i * 3;
-      const x = base[k];
-      const z = base[k + 2];
-      const y = Math.sin(x * 0.021 + t * 0.62) * 1.5
-        + Math.sin(z * 0.029 - t * 0.48) * 1.1
-        + Math.sin((x + z) * 0.012 + t * 0.31) * 1.9;
-      pos.array[k + 1] = y;
-    }
-    pos.needsUpdate = true;
-  }
-
-  _updateRays(dt, cam, depth) {
-    const fade = 1 - smoothstep(45, 120, depth);
-    const visible = fade > 0.01;
-    this.rayRig.visible = visible;
-    if (!visible) return;
-    this.rayMaterial.opacity = 0.085 * fade;
-    /* Drift the whole rig toward the camera instead of snapping it — shafts of
-       light that teleport are worse than no shafts at all. */
-    this.rayRig.position.x = damp(this.rayRig.position.x, cam.x, 0.6, dt);
-    this.rayRig.position.z = damp(this.rayRig.position.z, cam.z, 0.6, dt);
-    for (const ray of this.rays) {
-      ray.mesh.rotation.y += ray.spin * dt;
-    }
-  }
-
-  _updateSway(t, cam) {
-    for (const s of this.swayers) {
-      const obj = s.obj;
-      const dx = obj.position.x - cam.x;
-      const dz = obj.position.z - cam.z;
-      const near = dx * dx + dz * dz < SWAY_RANGE * SWAY_RANGE;
-      if (!near) {
-        if (s.active) {
-          obj.rotation.set(0, 0, 0);
-          s.active = false;
-        }
-        continue;
-      }
-      s.active = true;
-      const a = t * s.rate + s.phase;
-      obj.rotation.x = Math.sin(a) * s.amp;
-      obj.rotation.z = Math.cos(a * 0.77 + 1.3) * s.amp * 0.8;
-    }
-  }
 
   _updateStation(t, cam) {
     /* Two-beat pulse: a slow breath with a sharper flash on top, so it reads
@@ -2299,8 +2369,6 @@ export class SeaWorld {
     this._textures.clear();
     this.group.clear();
     this.layers = [];
-    this.swayers = [];
-    this.rays = [];
     this.heights = null;
     this.snowPositions = null;
     this.snowFall = null;
