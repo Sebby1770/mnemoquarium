@@ -155,3 +155,35 @@ export function disposeTree(root) {
   });
   if (root.parent) root.parent.remove(root);
 }
+
+/* Weld coincident vertices into an indexed geometry. three's polyhedra come
+   out non-indexed — every face owns its own corners — so displacing one and
+   computing normals gives facets. Welding first means a displaced rock gets
+   one normal per corner and shades smooth, which is most of the difference
+   between a boulder and a crumpled paper bag. */
+export function weldVertices(geometry, tolerance = 1e-4) {
+  const src = geometry.index ? geometry.toNonIndexed() : geometry;
+  const pos = src.attributes.position;
+  const scale = 1 / tolerance;
+  const seen = new Map();
+  const positions = [];
+  const index = new Array(pos.count);
+  for (let i = 0; i < pos.count; i += 1) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const z = pos.getZ(i);
+    const key = `${Math.round(x * scale)},${Math.round(y * scale)},${Math.round(z * scale)}`;
+    let id = seen.get(key);
+    if (id === undefined) {
+      id = positions.length / 3;
+      positions.push(x, y, z);
+      seen.set(key, id);
+    }
+    index[i] = id;
+  }
+  if (src !== geometry) src.dispose();
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  out.setIndex(index);
+  return out;
+}

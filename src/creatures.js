@@ -94,7 +94,7 @@ function buildShark(type) {
   const profile = (t) => {
     const bell = Math.exp(-Math.pow((t - 0.63) / 0.40, 2));
     const peduncle = 0.14 + 0.86 * smoothstep(0, 0.28, t);
-    const snout = 1 - 0.72 * smoothstep(0.82, 1, t);
+    const snout = 1 - 0.86 * smoothstep(0.8, 1, t);
     return clamp01(bell * peduncle * snout + 0.05);
   };
 
@@ -119,14 +119,8 @@ function buildShark(type) {
   }
   group.add(new THREE.Mesh(body, material));
 
-  // Pale underside, stopping short of the nose the way counter-shading does.
-  const under = spindle({
-    length: L * 0.66, radius: L * 0.072, rings: 12, segments: 10,
-    profile: (t) => Math.sin(Math.PI * clamp01(t * 0.9 + 0.05)),
-    flattenX: 0.95, flattenY: 0.42,
-  });
-  under.translate(0, -L * 0.052, L * 0.06);
-  group.add(new THREE.Mesh(under, belly));
+  // The pale underside is countershading in the swim shader now; a separate
+  // belly mesh read as a white bulge and made the whole animal look soft.
 
   // Dorsal: swept back hard, the one everybody can draw.
   const dorsal = blade({ length: L * 0.3, width: L * 0.19, taper: 0.06, sweep: 0.95 });
@@ -179,9 +173,9 @@ function buildShark(type) {
   /* Head. A blunt snout, the mouth slung underneath it, five gill slits and an
      eye that catches the lamps — the four things that make a fish head read as
      a face at the edge of the light. */
-  const snout = new THREE.Mesh(new THREE.SphereGeometry(L * 0.085, 12, 9), material);
-  snout.scale.set(0.9, 0.78, 1.5);
-  snout.position.z = L * 0.43;
+  const snout = new THREE.Mesh(new THREE.SphereGeometry(L * 0.07, 12, 9), material);
+  snout.scale.set(0.62, 0.52, 1.9);
+  snout.position.set(0, L * 0.008, L * 0.42);
   group.add(snout);
 
   const jaw = new THREE.Group();
@@ -791,6 +785,96 @@ function randRangeLocal(rng, lo, hi) {
   return lo + rng.random() * (hi - lo);
 }
 
+/* ----------------------------------------------------------- swimming --
+   A rigid body with a swinging tail reads as a toy. Real fish swim with a
+   travelling wave that starts near nothing at the head and grows toward the
+   tail, so the whole back half of the animal bends. That wave is done here in
+   the vertex shader, measured in the creature's own frame (the inverse of its
+   group's world matrix is a uniform), so every part — fins, eyes, the meshes
+   hung off the tail pivot — bends together instead of coming apart.
+
+   Whales wave up and down rather than side to side, hence the axis. */
+const SWIM_SPECS = {
+  shark: { amp: 0.075, k: 5.2, rate: 2.4, axis: 0, counter: 1 },
+  greatwhite: { amp: 0.07, k: 5.0, rate: 2.0, axis: 0, counter: 1 },
+  grandmother: { amp: 0.065, k: 4.8, rate: 1.8, axis: 0, counter: 1 },
+  angler: { amp: 0.05, k: 4.2, rate: 1.6, axis: 0, counter: 0.35 },
+  gulper: { amp: 0.11, k: 6.0, rate: 1.8, axis: 0, counter: 0.3 },
+  lamprey: { amp: 0.16, k: 9.0, rate: 4.2, axis: 0, counter: 0.6 },
+  sperm: { amp: 0.045, k: 3.6, rate: 1.0, axis: 1, counter: 0.5 },
+};
+
+function swimUniforms(type, spec) {
+  return {
+    uSwimPhase: { value: 0 },
+    uSwimAmp: { value: spec.amp },
+    uSwimLen: { value: type.length },
+    uSwimK: { value: spec.k },
+    uSwimAxis: { value: spec.axis },
+    uSwimInv: { value: new THREE.Matrix4() },
+    uSwimRot: { value: new THREE.Matrix3() },
+    uCounter: { value: spec.counter },
+    uRimColour: { value: new THREE.Color(0x9fd8ff) },
+    uRimStrength: { value: 0.2 },
+  };
+}
+
+function patchSwim(material, uniforms) {
+  if (material.userData.swimPatched) return material;
+  material.userData.swimPatched = true;
+  material.userData.shaderTag = "swim";
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", `#include <common>
+        uniform float uSwimPhase;
+        uniform float uSwimAmp;
+        uniform float uSwimLen;
+        uniform float uSwimK;
+        uniform float uSwimAxis;
+        uniform mat4 uSwimInv;
+        uniform mat3 uSwimRot;
+        varying vec3 vSwimN;`)
+      .replace("#include <beginnormal_vertex>", `#include <beginnormal_vertex>
+        vSwimN = normalize(mat3(uSwimInv) * normalize(mat3(modelMatrix) * objectNormal));`)
+      .replace("#include <begin_vertex>", `#include <begin_vertex>
+        {
+          mat3 swimM = mat3(modelMatrix);
+          vec3 swimW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+          vec3 swimL = (uSwimInv * vec4(swimW, 1.0)).xyz;
+          // 0 at the snout, 1 at the tail tip; the wave grows along it.
+          float tail = clamp((0.5 * uSwimLen - swimL.z) / uSwimLen, 0.0, 1.25);
+          float bend = tail * tail * 0.9 + tail * 0.1;
+          float wave = sin(uSwimPhase - tail * uSwimK) * uSwimAmp * uSwimLen * bend;
+          vec3 off = uSwimAxis > 0.5 ? vec3(0.0, wave, 0.0) : vec3(wave, 0.0, 0.0);
+          vec3 offW = uSwimRot * off;
+          float s2 = max(dot(swimM[0], swimM[0]), 1e-6);
+          transformed += (transpose(swimM) * offW) / s2;
+        }`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", `#include <common>
+        uniform float uCounter;
+        uniform vec3 uRimColour;
+        uniform float uRimStrength;
+        varying vec3 vSwimN;`)
+      .replace("#include <color_fragment>", `#include <color_fragment>
+        {
+          // Countershading is pigment: dark from above, pale from below.
+          float belly = 1.0 - smoothstep(-0.55, 0.3, vSwimN.y);
+          vec3 shade = mix(vec3(0.58), vec3(1.5), belly);
+          diffuseColor.rgb *= mix(vec3(1.0), shade, uCounter);
+        }`)
+      .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+        {
+          // A rim of lamplight, so a flank at the edge of the beam still reads.
+          float rim = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0);
+          totalEmissiveRadiance += uRimColour * rim * uRimStrength;
+        }`);
+  };
+  material.needsUpdate = true;
+  return material;
+}
+
 const BUILDERS = {
   greatwhite: buildScarredShark,
   grandmother: buildScarredShark,
@@ -940,8 +1024,10 @@ export class CreatureManager {
       baseEmissive: built.materials.map((m) => (m.emissiveIntensity != null ? m.emissiveIntensity : 0)),
     };
 
-    // The serpent needs a trail to lay its body along before it first moves.
-    if (typeId === "leviathan") {
+    /* Anything with a follow-the-leader body needs a trail to lay itself along
+       before it first moves — the Tidewarden and the Ninefold as well as the
+       leviathan, or the chain collapses onto the head until the trail fills. */
+    if (built.parts && built.parts.segments) {
       for (let i = 0; i < 200; i += 1) creature.trail.push(position.clone());
     }
 
@@ -954,6 +1040,17 @@ export class CreatureManager {
       creature.buried = true;
       creature.state = "idle";
       built.group.rotation.x = 0;
+    }
+
+    // Swimmers get the body wave. WebGL2 only: it needs transpose() in GLSL.
+    const swimSpec = SWIM_SPECS[typeId];
+    if (swimSpec && this.game.renderer && this.game.renderer.capabilities.isWebGL2) {
+      const uniforms = swimUniforms(type, swimSpec);
+      built.group.traverse((o) => {
+        if (o.isMesh && o.material && o.material.isMeshStandardMaterial) patchSwim(o.material, uniforms);
+      });
+      creature.swim = uniforms;
+      creature.swimSpec = swimSpec;
     }
 
     this.group.add(built.group);
@@ -1237,8 +1334,21 @@ export class CreatureManager {
     const parts = c.parts;
     const moving = clamp01(c.velocity.length() / Math.max(1, c.type.speed));
 
+    if (c.swim) {
+      c.object.updateWorldMatrix(true, false);
+      c.swim.uSwimInv.value.copy(c.object.matrixWorld).invert();
+      c.swim.uSwimRot.value.setFromMatrix4(c.object.matrixWorld);
+      // Beat faster when it is going somewhere, and hardest when it lunges.
+      const effort = 0.55 + moving * 1.5 + (c.lunge > 0 ? 1.2 : 0);
+      c.swim.uSwimPhase.value += dt * c.swimSpec.rate * effort;
+      c.swim.uSwimAmp.value = c.swimSpec.amp * (0.7 + moving * 0.5);
+      const lamps = this.game.sub && this.game.sub.lightsOn;
+      c.swim.uRimStrength.value = lamps ? 0.16 : 0.05;
+    }
     if (parts.tail) {
-      parts.tail.rotation.y = Math.sin(t * (3 + moving * 5)) * (0.22 + moving * 0.38);
+      // With the body already bending, the tail only needs its last flick.
+      const flick = c.swim ? 0.4 : 1;
+      parts.tail.rotation.y = Math.sin(t * (3 + moving * 5)) * (0.22 + moving * 0.38) * flick;
     }
     if (parts.jaw && c.type.id !== "angler") {
       parts.jaw.scale.z = 1 + Math.max(0, Math.sin(t * 2.2)) * 0.12;

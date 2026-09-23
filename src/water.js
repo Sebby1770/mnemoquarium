@@ -20,6 +20,7 @@ import { clamp01, damp, lerp } from "./util.js";
 const CACHE_KEY = "mnemoquarium-water";
 
 const _colour = new THREE.Color();
+const _eye = new THREE.Vector3();
 const _sun = new THREE.Vector3(0.35, 1, 0.2).normalize();
 
 /* Beer-Lambert transmittance plus in-scattering, and a caustic web thrown down
@@ -54,7 +55,14 @@ const FRAGMENT_CHUNK = /* glsl */ `
       }
     }
 
-    float d = max(viewDepth, 0.0) * uMurk;
+    float d = max(viewDepth, 0.0);
+    if (uCamAir > 0.5) {
+      // From the air only the stretch of the sightline under the surface is
+      // water; above it there is nothing to absorb anything.
+      float below = -worldPos.y;
+      d = below > 0.0 ? d * below / max(uCamHeight + below, 0.001) : 0.0;
+    }
+    d *= uMurk;
     vec3 transmit = exp(-uAbsorb * d);
     colour = colour * transmit + uScatter * (1.0 - transmit);
   }
@@ -76,6 +84,8 @@ export class Water {
       uCausticScale: { value: WATER.causticScale },
       uCausticFade: { value: new THREE.Vector2(WATER.causticFadeStart, WATER.causticFadeEnd) },
       uCausticTint: { value: new THREE.Color(0xbfe9ff) },
+      uCamAir: { value: 0 },
+      uCamHeight: { value: 0 },
     };
 
     // Live values, eased toward the band the player is actually in.
@@ -145,6 +155,8 @@ export class Water {
           uniform float uCausticScale;
           uniform vec2 uCausticFade;
           uniform vec3 uCausticTint;
+          uniform float uCamAir;
+          uniform float uCamHeight;
           varying vec3 vWaterWorldPos;
           varying float vWaterViewDepth;
           varying vec3 vWaterWorldNormal;
@@ -159,8 +171,12 @@ export class Water {
         );
     };
 
-    // Without this, three may hand this program to an unpatched lookalike.
-    material.customProgramCacheKey = () => CACHE_KEY;
+    /* Without this, three may hand this program to an unpatched lookalike.
+       A material that carries its own patch (moss, sway, a swimming body)
+       says so in userData.shaderTag, and the key has to include it, or the
+       first rock compiled would lend its moss to every coral after it. */
+    const tag = (material.userData && material.userData.shaderTag) || "";
+    material.customProgramCacheKey = () => `${CACHE_KEY}:${tag}`;
     material.needsUpdate = true;
     return material;
   }
@@ -236,7 +252,18 @@ export class Water {
     }
     this.uniforms.uMurk.value = damp(this.uniforms.uMurk.value, murk, 2, dt);
 
-    this.background.copy(this.uniforms.uScatter.value);
+    /* Surfaced, the horizon is the sky's; the sky dome covers it anyway, but
+       the clear colour shows at the seams. Under, it is the water's. */
+    const sky = this.game.sky;
+    const air = !!(sky && sky.above);
+    this.uniforms.uCamAir.value = air ? 1 : 0;
+    const eye = this.game.camera;
+    if (eye) {
+      eye.getWorldPosition(_eye);
+      this.uniforms.uCamHeight.value = Math.max(0, _eye.y);
+    }
+    if (air) sky.horizonColour(this.background);
+    else this.background.copy(this.uniforms.uScatter.value);
     this.game.scene.background = this.background;
   }
 
