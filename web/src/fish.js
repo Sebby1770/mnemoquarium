@@ -734,12 +734,26 @@ export class FishManager {
     geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(MAX_FISH * 3), 3));
     geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(MAX_FISH * 3), 3));
     geometry.setDrawRange(0, 0);
+    /* Points are squares unless they are given a shape. A soft round dot, or
+       a lantern fish under bloom reads as a glowing tile. */
+    const canvas = document.createElement("canvas");
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext("2d");
+    const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, "rgba(255,255,255,1)");
+    grad.addColorStop(0.35, "rgba(255,255,255,0.45)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 32, 32);
+    this.glowMap = new THREE.CanvasTexture(canvas);
     const material = new THREE.PointsMaterial({
-      size: 1.35,
+      map: this.glowMap,
+      size: 1.6,
       sizeAttenuation: true,
       vertexColors: true,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.85,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       fog: true,
@@ -1580,6 +1594,7 @@ export class FishManager {
     disposeTree(this.group);
     for (const geometry of this.geometries.values()) geometry.dispose();
     this.geometries.clear();
+    if (this.glowMap) this.glowMap.dispose();
     if (this.game.scene) this.game.scene.remove(this.group);
   }
 }

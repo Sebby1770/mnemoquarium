@@ -27,7 +27,10 @@ const _lampB = new THREE.Color();
 /* Feel constants that are genuinely about this module and nothing else. Balance
    numbers live in config.js; these are the ones that only mean something inside
    the flight model. */
-const SURFACE_CEILING = -1.4;      // you may not breach: the hatch is not rated for air
+const SURFACE_CEILING = -1.4;      // only used if there is no sky module to float on
+const FREEBOARD = 0.1;             // hull centre this far under the local wave when riding
+const SURFACE_RECHARGE = 7;        // cell per second with the snorkel up and the diesel running
+const SWELL_SPAN = 2.4;            // half-length of the hull for sampling the swell under it
 const DRAG_QUADRATIC = 0.014;      // v^2 term — light enough that the clamp still bites
 const BUOYANCY = 0.55;             // m/s^2 of "the sea would rather you came up"
 const VERT_SETTLE = 1.5;           // extra damping on Y with no vertical input
@@ -115,6 +118,11 @@ export class Submarine {
     this.yaw = 0;
     this.pitch = 0;
     this.roll = 0;
+    this.surfaced = false;
+    this.surfaceBlend = 0;
+    this.swellPitch = 0;
+    this.swellRoll = 0;
+    this.everSurfaced = false;
     this.yawRate = 0;
 
     /* ---- live readouts, read-only from outside -------------------------- */
@@ -306,14 +314,9 @@ export class Submarine {
        a bright shelf and reads as a grey bar in the abyss, because there is no
        daylight down there for the glass to catch. */
     this.glassMat = glassMat;
-    for (const [w, h, x, y, r] of [[1.0, 0.028, -0.28, 0.26, 0.42], [0.42, 0.014, 0.30, 0.13, 0.42]]) {
-      const streak = new THREE.Mesh(glassGeom, glassMat);
-      streak.scale.set(w, h, 1);
-      streak.position.set(x, y, -0.46);
-      streak.rotation.z = r;
-      streak.frustumCulled = false;
-      this.cockpit.add(streak);
-    }
+    /* The glass used to carry two long additive smears. Against the sky, and
+       even at twelve metres, they read as white bars across the view rather
+       than as glass, so they are gone; the frame alone says "window". */
 
     if (cam) {
       cam.add(this.cockpit);
@@ -834,6 +837,43 @@ export class Submarine {
     this.object.rotation.set(this.pitch, this.yaw, this.roll);
   }
 
+  onSurface() {
+    const game = this.game;
+    game.bus.emit("sub:surface", {});
+    if (game.audio) game.audio.sfx("undock");
+    if (!this.everSurfaced) {
+      this.everSurfaced = true;
+      game.log("the tower breaks the surface. air, and a sky, and the diesel coughs awake.", "lore");
+      game.log("the cell charges while you sit up here. C takes you back down.", "info");
+    }
+  }
+
+  /* How the swell is leaning the boat right now: sample the water ahead,
+     behind and either side, and tilt to match. Fades in and out with how
+     surfaced we are so breaking through is not a lurch. */
+  updateSwell(dt) {
+    const sky = this.game.sky;
+    this.surfaceBlend = damp(this.surfaceBlend, this.surfaced ? 1 : 0, 4, dt);
+    if (!sky || this.surfaceBlend < 0.001) {
+      this.swellPitch = 0;
+      this.swellRoll = 0;
+      return;
+    }
+    const x = this.position.x;
+    const z = this.position.z;
+    const fx = -Math.sin(this.yaw);
+    const fz = -Math.cos(this.yaw);
+    const rx = Math.cos(this.yaw);
+    const rz = -Math.sin(this.yaw);
+    const L = SWELL_SPAN;
+    const ahead = sky.surfaceHeight(x + fx * L, z + fz * L);
+    const behind = sky.surfaceHeight(x - fx * L, z - fz * L);
+    const right = sky.surfaceHeight(x + rx * L, z + rz * L);
+    const left = sky.surfaceHeight(x - rx * L, z - rz * L);
+    this.swellPitch = Math.atan2(ahead - behind, 2 * L) * this.surfaceBlend;
+    this.swellRoll = Math.atan2(right - left, 2 * L) * this.surfaceBlend;
+  }
+
   applyThrust(dt) {
     const s = this.stats;
     const fwdIn = (this.keys.forward ? 1 : 0) - (this.keys.back ? 1 : 0);
@@ -899,13 +939,26 @@ export class Submarine {
     }
     this.position.addScaledVector(_v2, dt);
 
-    if (this.position.y > SURFACE_CEILING) {
+    /* The surface. The boat can come all the way up now and ride the swell
+       with the tower out, which is where the sky is. Riding is just holding
+       the hull on the local wave: the sea lifts and drops you, and any
+       downward thrust takes you straight back under. */
+    const sky = this.game.sky;
+    if (sky) {
+      const waterline = sky.surfaceHeight(this.position.x, this.position.z) - FREEBOARD;
+      const wasSurfaced = this.surfaced;
+      if (this.position.y >= waterline - 0.02 && v.y >= -0.4) {
+        this.position.y = waterline;
+        if (v.y > 0) v.y = 0;
+        this.surfaced = true;
+      } else {
+        this.surfaced = false;
+      }
+      if (this.surfaced && !wasSurfaced) this.onSurface();
+      if (!this.surfaced && wasSurfaced) this.game.bus.emit("sub:dive", {});
+    } else if (this.position.y > SURFACE_CEILING) {
       this.position.y = SURFACE_CEILING;
       if (v.y > 0) v.y *= -0.08;
-      if (this.time - (this.surfaceNoteAt || -99) > 12) {
-        this.surfaceNoteAt = this.time;
-        this.game.log("the hull bumps the underside of the sky. no further up than this.", "info");
-      }
     }
 
     if (world && world.clampToBounds(this.position, v) && this.boundsTimer <= 0) {
@@ -1015,6 +1068,11 @@ export class Submarine {
     if (s.batteryTrickle > 0) {
       this.battery = Math.min(this.batteryMax, this.battery + s.batteryTrickle * dt);
     }
+    // Snorkel up: the diesel can breathe, so the cell charges for free.
+    if (this.surfaced) {
+      this.battery = Math.min(this.batteryMax, this.battery + SURFACE_RECHARGE * dt);
+      if (this.batteryFlat && this.battery > this.batteryMax * 0.1) this.batteryFlat = false;
+    }
     if (s.repairRate > 0 && this.hull > 0 && this.hull < this.hullMax) {
       this.hull = Math.min(this.hullMax, this.hull + s.repairRate * dt);
     }
@@ -1111,7 +1169,10 @@ export class Submarine {
     if (this.glassMat) {
       // Sunlight is gone by the twilight, and so is the reflection.
       const daylight = 1 - clamp01(this.depth / 240);
-      this.glassMat.opacity = 0.006 + 0.055 * daylight * daylight;
+      /* In air the glass is dry and the sky is bright enough that any smear
+         reads as a white bar across the view, so it all but disappears. */
+      const inAir = this.game.sky && this.game.sky.above ? 1 : 0;
+      this.glassMat.opacity = (0.004 + 0.03 * daylight * daylight) * (1 - inAir * 0.9);
     }
     // Two lamps on the lip: green, amber, red. Read them out of the corner of
     // your eye and you will know before the gauges tell you.
@@ -1132,6 +1193,7 @@ export class Submarine {
     const cam = this.game.camera;
     if (!cam || !this.cockpitOffset) return;
 
+    this.updateSwell(dt);
     const shake = clamp01((this.game.vfx && this.game.vfx.shake) || 0);
     if (shake > 0.001) {
       /* Sines beat pure noise here: the cabin rings, it does not buzz. */
@@ -1143,13 +1205,13 @@ export class Submarine {
         this.cockpitOffset.z + Math.sin(t * 29.7 + 0.4) * amp * 0.4,
       );
       cam.rotation.set(
-        Math.sin(t * 41.9 + 2.1) * shake * 0.022,
+        Math.sin(t * 41.9 + 2.1) * shake * 0.022 + this.swellPitch,
         Math.sin(t * 33.3 + 0.9) * shake * 0.022,
-        Math.sin(t * 26.1 + 1.3) * shake * 0.05,
+        Math.sin(t * 26.1 + 1.3) * shake * 0.05 + this.swellRoll,
       );
-    } else if (cam.position.x !== this.cockpitOffset.x || cam.rotation.z !== 0) {
+    } else {
       cam.position.copy(this.cockpitOffset);
-      cam.rotation.set(0, 0, 0);
+      cam.rotation.set(this.swellPitch, 0, this.swellRoll);
     }
 
     if (cam.isPerspectiveCamera) {

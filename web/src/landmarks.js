@@ -67,6 +67,25 @@ function pickKind(rng, depth) {
   return pool[rng.randrange(pool.length)];
 }
 
+/* One soft round dot, shared by every halo. Generated, never loaded. */
+let _glow = null;
+function glowTexture() {
+  if (_glow) return _glow;
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.25, "rgba(255,255,255,0.55)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  _glow = new THREE.CanvasTexture(canvas);
+  return _glow;
+}
+
 /* ------------------------------------------------------------- the shapes -- */
 
 function rockMat(hex, rough = 0.95) {
@@ -134,6 +153,15 @@ function buildVents(rng) {
   const smoke = new THREE.MeshBasicMaterial({
     color: 0x1a1218, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide,
   });
+  // Brighter than white on purpose: the bloom pass is what makes it a glow.
+  const haloMat = new THREE.SpriteMaterial({
+    map: glowTexture(),
+    color: new THREE.Color(0xff7a2e).multiplyScalar(1.4),
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
+  });
 
   const stacks = 4 + rng.randrange(5);
   for (let i = 0; i < stacks; i += 1) {
@@ -154,6 +182,15 @@ function buildVents(rng) {
     const glow = new THREE.PointLight(0xff8a3c, 5, 60, 2);
     glow.position.set(chimney.position.x, h - 1, chimney.position.z);
     group.add(glow);
+
+    /* A halo over each mouth. The water eats orange first, so the chimneys'
+       own glow is gone twenty metres out; this is additive and outside the
+       water model, so the field reads as a warm smudge in the black from a
+       long way off — which is the whole reason to go looking for it. */
+    const halo = new THREE.Sprite(haloMat);
+    halo.scale.setScalar(r * 7.5);
+    halo.position.set(chimney.position.x, h + r, chimney.position.z);
+    group.add(halo);
   }
 
   // Mat: flat discs of orange life spreading out from the stacks.
@@ -166,7 +203,7 @@ function buildVents(rng) {
     group.add(disc);
   }
 
-  return { group, materials: [stone, mat, smoke], radius: 54 };
+  return { group, materials: [stone, mat, smoke, haloMat], radius: 54 };
 }
 
 /* Ribs out of the silt, and the scavengers still working. */
