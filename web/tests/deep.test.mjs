@@ -19,6 +19,7 @@ const quality = await import("../src/quality.js");
 const nav = await import("../src/nav.js");
 const stick = await import("../src/stick.js");
 const frame = await import("../src/frame.js");
+const walk = await import("../src/walk.js");
 
 const PHRASE = "forgotten kiosk under neon rain";
 
@@ -349,4 +350,62 @@ test("a slow frame is cut into steps instead of slowing the sea down", () => {
   assert.deepEqual(frame.splitFrame(0), { steps: 1, dt: 0 });
   assert.deepEqual(frame.splitFrame(NaN), { steps: 1, dt: 0 });
   assert.equal(frame.splitFrame(frame.MAX_DT).steps, 1, "exactly the limit is one step");
+});
+
+test("walking slides along a wall instead of sticking to it", () => {
+  const wall = [{ minX: -1, maxX: 1, minZ: -10, maxZ: 10 }];
+  // Walking diagonally into the wall's face keeps the along-wall motion.
+  const [x, z] = walk.resolveCircle(1.2, 3, 0.35, wall);
+  assert.ok(Math.abs(x - 1.35) < 1e-9, "pushed out to exactly the radius");
+  assert.equal(z, 3, "the motion along the wall survives");
+  // Nowhere near it: untouched.
+  assert.deepEqual(walk.resolveCircle(5, 5, 0.35, wall), [5, 5]);
+  // Somehow inside it: out by the nearest face.
+  const [ix] = walk.resolveCircle(0.8, 0, 0.35, wall);
+  assert.ok(Math.abs(ix - 1.35) < 1e-9);
+  // A corner between two boxes settles clear of both.
+  const corner = [{ minX: 0, maxX: 1, minZ: -5, maxZ: 5 }, { minX: -5, maxX: 5, minZ: 0, maxZ: 1 }];
+  const [cx, cz] = walk.resolveCircle(-0.1, -0.1, 0.35, corner);
+  for (const b of corner) {
+    const nx = Math.max(b.minX, Math.min(cx, b.maxX));
+    const nz = Math.max(b.minZ, Math.min(cz, b.maxZ));
+    assert.ok(Math.hypot(cx - nx, cz - nz) >= 0.35 - 1e-6, "clear of every box");
+  }
+});
+
+test("you use what you are looking at, not what is behind you", () => {
+  const items = [{ id: "front", x: 0, z: -2 }, { id: "behind", x: 0, z: 1.5 }, { id: "far", x: 0, z: -9 }];
+  assert.equal(walk.pickInteractable(0, 0, 0, -1, items).id, "front");
+  assert.equal(walk.pickInteractable(0, 0, 0, 1, items).id, "behind");
+  assert.equal(walk.pickInteractable(0, 0, 1, 0, items), null, "nothing off to the side");
+  assert.equal(walk.pickInteractable(0, -8, 0, -1, items).id, "far", "and only in reach");
+});
+
+test("sightings are saved once each, and junk is dropped", () => {
+  const back = save.migrate({ phrase: PHRASE, stats: { sighted: ["octopus", "ray", "octopus", "<x>", 3, "jelly"] } });
+  assert.deepEqual(back.stats.sighted, ["octopus", "ray", "jelly"]);
+  assert.deepEqual(save.newProfile(PHRASE, 1).stats.sighted, []);
+});
+
+test("every creature a band can spawn exists, and the new ones are placed", () => {
+  for (const zone of ZONES) {
+    for (const [id] of zone.hostiles) assert.ok(CREATURES[id], `${zone.id} spawns unknown ${id}`);
+  }
+  const spawned = new Set(ZONES.flatMap((z) => z.hostiles.map(([id]) => id)));
+  for (const id of ["inkwidow", "razorfin", "choir"]) assert.ok(spawned.has(id), `${id} lives somewhere`);
+  assert.ok(CREATURES.inkwidow.grabs && CREATURES.inkwidow.inks);
+});
+
+test("the scrubbers and the lattice are real upgrades with sane stock values", () => {
+  const stock = progression.computeStats({});
+  assert.equal(stock.inkKept, 100, "stock glass keeps all of the ink");
+  assert.equal(stock.shockDamage, 0, "and there is no lattice");
+  const fitted = progression.computeStats({ scrubber: 3, lattice: 2 });
+  assert.ok(fitted.inkKept < stock.inkKept);
+  assert.ok(fitted.shockDamage > 0);
+  for (const id of ["scrubber", "lattice"]) {
+    const up = UPGRADES.find((u) => u.id === id);
+    assert.ok(up, id);
+    assert.equal(up.costs.length, up.values.length - 1, `${id} has a price for every mark`);
+  }
 });

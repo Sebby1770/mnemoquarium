@@ -58,6 +58,10 @@ modules disagree the one that broke this file is wrong.
 | `src/input.js` | agent | `InputDevices` (gamepad + touch, writes `sub.analog` and `sub.lookDX/DY`), `watchMenuPad` |
 | `src/stick.js` | agent | `shapeStick, shapeAxis, thumbVector, edges, DEADZONE` — no DOM, no three.js |
 | `src/frame.js` | agent | `splitFrame, MAX_DT, MAX_STEPS` — no three.js |
+| `src/base.js` | agent | `Base` — the walkable Hull: own scene and camera, drawn in modes "base" and "station" |
+| `src/walk.js` | agent | `resolveCircle, pickInteractable` — no three.js |
+| `src/submodel.js` | agent | `buildSubModel(upgrades), fittedParts(upgrades)` |
+| `src/ambient.js` | agent | `AmbientLife, AMBIENT_KINDS, placeFor` — one InstancedMesh per kind, vertex-animated |
 | `src/quality.js` | agent | `ResolutionGovernor, pixelRatioFor, SCALE, QUALITY_MODES` — no three.js |
 
 ## The `game` object
@@ -75,7 +79,7 @@ game = {
   profile,             // persisted player profile (see save.js)
   stats,               // result of progression.computeStats(profile.upgrades)
   ecology, world, sub, fish, creatures, combat, vfx, hud, audio,
-  mode,                // "boot" | "start" | "dive" | "station" | "paused" | "chart" | "dead"
+  mode,                // "boot" | "start" | "dive" | "base" | "station" | "paused" | "chart" | "dead"
   elapsed,             // seconds of dive time
   dt,                  // last frame delta, clamped to <= 1/20
   paused,              // bool
@@ -146,7 +150,8 @@ clamped, so a slow machine plays in real time instead of slow motion.
   ammo: { torpedo: 0 },
   stats: { dives:0, fishSold:0, creditsEarned:0, deepest:0, deaths:0,
            kills:{}, discovered:[] /* species indices seen */,
-           landmarks:[] /* surveyed landmark ids, "lm-N" */ },
+           landmarks:[] /* surveyed landmark ids, "lm-N" */,
+           sighted:[] /* ambient kinds seen: "octopus", "jelly", ... */ },
   settings: { sound:false, invertY:false, sensitivity:1, quality:"auto" },
   updated: 0,   // ms epoch
 }

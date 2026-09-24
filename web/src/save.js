@@ -194,7 +194,19 @@ function migrateStats(raw) {
     // Surveyed landmark ids. Dropping these on save meant every landmark paid
     // its survey fee again after a reload.
     landmarks: migrateLandmarks(src.landmarks),
+    // Ambient animals seen, by kind id — each pays its sighting fee once.
+    sighted: migrateIds(src.sighted, /^[a-z]{2,16}$/, 32),
   };
+}
+
+function migrateIds(raw, pattern, cap) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  for (const entry of raw) {
+    if (seen.size >= cap) break;
+    if (typeof entry === "string" && pattern.test(entry)) seen.add(entry);
+  }
+  return [...seen];
 }
 
 function migrateLandmarks(raw) {
@@ -243,6 +255,7 @@ export function newProfile(phrase, seed) {
       kills: {},
       discovered: [],
       landmarks: [],
+      sighted: [],
     },
     settings: { sound: false, invertY: false, sensitivity: 1, quality: "auto" },
     updated: now(),

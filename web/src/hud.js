@@ -66,6 +66,8 @@ const UPGRADE_UNITS = {
   thrust: " m/s2",
   repair: " hp/s",
   reactor: " /s",
+  scrubber: "% ink",
+  lattice: " dmg",
 };
 
 const CONTACT_POOL = 44;
@@ -1572,7 +1574,7 @@ export class HUD {
     this.sub.respawn();
     this.bus.emit("profile:changed", {});
     game.persist();
-    game.setMode("station");
+    game.setMode("base");
   }
 
   revive() {
@@ -1582,7 +1584,7 @@ export class HUD {
       return;
     }
     this.sub.respawn();
-    game.setMode("station");
+    game.setMode("base");
   }
 
   syncSettings() {

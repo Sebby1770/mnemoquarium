@@ -26,6 +26,8 @@ import { Chart } from "./chart.js";
 import { ResolutionGovernor, pixelRatioFor } from "./quality.js";
 import { InputDevices } from "./input.js";
 import { splitFrame } from "./frame.js";
+import { AmbientLife } from "./ambient.js";
+import { Base } from "./base.js";
 
 const SAVE_INTERVAL = 4;       // seconds between debounced writes
 
@@ -96,11 +98,14 @@ export class Game {
     this.fish = new FishManager(this);
     this.creatures = new CreatureManager(this);
     this.landmarks = new Landmarks(this);
+    this.ambient = new AmbientLife(this);
     this.combat = new Combat(this);
     this.audio = new Audio(this);
     this.hud = new HUD(this);
     this.chart = new Chart(this);
     this.input = new InputDevices(this);
+    // The inside of the Hull: its own scene, drawn while you are aboard.
+    this.base = new Base(this);
 
     /* Patch everything already in the scene, then keep patching as creatures
        arrive. register() is idempotent, so spawning is cheap. */
@@ -155,6 +160,7 @@ export class Game {
     // The cockpit window is cut to the frustum, so it is re-cut on resize.
     if (this.sub && this.sub.layoutCockpit) this.sub.layoutCockpit();
     if (this.post) this.post.setSize();
+    if (this.base) this.base.resize();
     this.governor.reset();
   }
 
@@ -185,7 +191,7 @@ export class Game {
     this.setMode("dive");
 
     this.log(`the tanks flood. "${this.phrase}" is already down there, in ${this.ecology.species.length} shapes.`, "lore");
-    this.log("hold the right mouse button on a fish to take it. the hold sells at the Hull behind you.", "info");
+    this.log("hold the right mouse button on a fish to take it. the hold sells at the Hull behind you — dock, and walk aboard.", "info");
     this.log("click to look around.", "info");
 
     this._tick = (now) => {
@@ -211,32 +217,39 @@ export class Game {
     this.world.update(dt, this.camera.getWorldPosition(_worldEye));
     this.sky.update(dt, _worldEye);
     this.landmarks.update(dt);
+    this.ambient.update(dt);
     this.water.update(dt);
     this.vfx.update(dt);
     this.audio.update(dt);
     this.hud.update(dt);
     this.chart.update(dt);
+    this.base.update(dt);
 
     this.saveTimer -= dt;
     if (this.dirty && this.saveTimer <= 0) this.persist(true);
 
+    // Aboard, the room is drawn instead of the sea.
+    const aboard = this.base.active;
+    const scene = aboard ? this.base.scene : this.scene;
+    const camera = aboard ? this.base.camera : this.camera;
     if (this.post) {
       try {
-        this.post.render(this.scene, this.camera, dt);
+        this.post.render(scene, camera, dt);
       } catch (err) {
         console.warn("post-processing failed, drawing direct from now on", err);
         this.post = null;
         this.renderer.setRenderTarget(null);
-        this.renderer.render(this.scene, this.camera);
+        this.renderer.render(scene, camera);
       }
     } else {
-      this.renderer.render(this.scene, this.camera);
+      this.renderer.render(scene, camera);
     }
   }
 
   /* One fixed-ish step of everything that moves. */
   simulate(dt) {
-    const live = this.mode === "dive" || this.mode === "station";
+    // Aboard counts as live: the clamps repair and recharge while you walk.
+    const live = this.mode === "dive" || this.mode === "station" || this.mode === "base";
     if (live) this.elapsed += dt;
 
     // The world keeps breathing while a panel is open — a frozen sea behind
@@ -291,8 +304,9 @@ export class Game {
   /* ===================================================================== */
 
   _onDocked() {
-    if (this.mode === "station") return;
-    this.setMode("station");
+    if (this.mode === "station" || this.mode === "base") return;
+    // Clamps on, and you climb out into the moon pool.
+    this.setMode("base");
     const cargo = this.profile.cargo || [];
     if (cargo.length) {
       const worth = cargo.reduce((sum, it) => sum + (Number(it.value) || 0), 0);
@@ -495,7 +509,7 @@ export class Game {
   revive() {
     this.sub.respawn();
     this.deadCause = null;
-    this.setMode("station");
+    this.setMode("base");
     this.log("you wake up on the clamps with the lamps already on. the sea keeps the same shape.", "info");
     this.persist(true);
   }
@@ -510,7 +524,7 @@ export class Game {
     this.sub.cargoFull = false;
     this.sub.respawn();
     this.bus.emit("profile:changed", {});
-    this.setMode("station");
+    this.setMode("base");
     this.persist(true);
   }
 
@@ -547,7 +561,7 @@ export class Game {
     document.removeEventListener("visibilitychange", this._onVisibility);
     window.removeEventListener("pagehide", this._onUnload);
 
-    for (const system of [this.input, this.chart, this.hud, this.audio, this.combat, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
+    for (const system of [this.base, this.input, this.chart, this.hud, this.audio, this.combat, this.ambient, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
       try {
         if (system && system.dispose) system.dispose();
       } catch (err) {

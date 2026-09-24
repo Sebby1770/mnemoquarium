@@ -2,6 +2,48 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.6.0] - 2026-09-24
+
+### Added
+- **The Hull, on foot.** Docking used to open a menu over the sea. Now the
+  clamps take the boat into a moon pool and you climb out: a steel hangar with
+  the boat floating under a gantry, railings, pipes, work lamps, and windows
+  onto the sea; the market terminal by the door; the drydock console at the
+  bow; a hatch back into the boat; and through a door, the ops room with the
+  manifest and **the tank**, where two of every species you have ever brought
+  home swim in a glass box. Walk with WASD (Shift runs), look with the mouse,
+  use with `E` — or the sticks and `A`, or a thumb and a tap. Terminals open
+  the old station panels with the room behind them; *Walk the Hull* or `Esc`
+  goes back. The room has its own lighting, its own reflections (a generated
+  environment map, since the addon one is not vendored) and its own grade.
+- **Refits you can see.** The boat in the drydock is built from your upgrade
+  levels: armour plates, frame rings, a bigger screw, then a duct, then side
+  pods, cargo pods, lit cell racks, more lamps, a growing sonar dome, the
+  capture ring, a longer deck gun, torpedo doors, a net drum, a repair drone, a
+  reactor glow, glass wipers and the shock lattice. Buying one swings the
+  gantry over it and welds.
+- **Marine life that is not money or teeth**: octopus that crawl the floor,
+  change colour, and ink and jet away when you come close; moon jellies that
+  climb on their own pulse and glow in the dark; mantas; green turtles. One
+  InstancedMesh per kind, animated entirely in the vertex shader — four draw
+  calls for all of them. The first good look at each pays a sighting fee.
+- **Three new hostiles.** The **Ink Widow** walks the floor like the harmless
+  octopus until it wraps itself over your glass, holds the boat nearly still
+  for a few seconds, and inks the window black. **Razorfin** barracuda hunt the
+  shelf and kelp in packs. The **Stinging Choir** is a drifting swarm of lit
+  bells from the twilight down that stings the cell.
+- **Two refits to answer them**: *Ink Scrubbers* (fully fitted, the glass
+  clears in under a third of the time, and from the middle out), and the *Shock Lattice* (anything that
+  grabs the hull is thrown off and hurt, for a little charge).
+- **Light shafts** fan down from the surface in shallow water, drifting, and
+  fade out by 160 m. **Floodlight beams** are visible in the water at depth,
+  shaded per pixel from the cone's true normal so the mesh never shows.
+- **Ink on the glass**: blotches that clear from the centre outward.
+
+### Changed
+- Reviving, and blowing the hold from the pause panel, now wake you on foot in
+  the Hull rather than at the menu.
+
 ## [1.5.0] - 2026-09-24
 
 ### Added

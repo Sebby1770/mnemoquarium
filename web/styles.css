@@ -1220,7 +1220,11 @@ body[data-hold="open"] #panel-cargo { display: grid; }
 /* Built by input.js on the first touch. Only there while flying: every panel
    is a normal page of buttons a thumb can already use. */
 .touch-controls { position: fixed; inset: 0; z-index: 12; display: none; user-select: none; -webkit-user-select: none; }
-body[data-mode="dive"] .touch-controls:not([hidden]) { display: block; }
+body[data-mode="dive"] .touch-controls:not([hidden]),
+body[data-mode="base"] .touch-controls:not([hidden]) { display: block; }
+/* On foot there is nothing to fire: a stick, a look, and the prompt to tap. */
+body[data-mode="base"] .touch-actions,
+body[data-mode="base"] .touch-bar { display: none; }
 .touch-look,
 .touch-stick-zone { position: absolute; touch-action: none; }
 .touch-look { inset: 0; }
@@ -1322,6 +1326,76 @@ body[data-input="touch"] #sonar-note { display: none; }
   body[data-input="touch"] .wpn-name { font-size: 0.66rem; }
   .touch-actions { bottom: calc(var(--hud-gap) + 10rem); }
 }
+
+/* ---------------------------------------------------------- aboard the Hull */
+
+#base-hud { position: fixed; inset: 0; z-index: 14; pointer-events: none; }
+/* Aboard, the dive HUD is put away — all but its toasts, which the Hull uses too. */
+body[data-mode="base"] #hud { opacity: 1; }
+body[data-mode="base"] #hud > :not(#toast) { visibility: hidden; }
+#base-hud[hidden] { display: none; }
+.base-plate {
+  position: absolute;
+  top: var(--hud-gap);
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 0.1rem;
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.base-credits { font-family: var(--mono); font-size: 0.9rem; color: var(--amber); font-weight: 500; }
+.base-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgba(211, 230, 240, 0.8);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+}
+.base-prompt {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 2.4rem);
+  transform: translateX(-50%);
+  padding: 0.55rem 1.1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(6, 14, 22, 0.86);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.base-prompt[hidden] { display: none; }
+.base-prompt kbd { margin-right: 0.35rem; }
+.base-foot {
+  position: absolute;
+  left: 50%;
+  bottom: var(--hud-gap);
+  transform: translateX(-50%);
+  display: grid;
+  gap: 0.35rem;
+  width: min(92vw, 760px);
+  text-align: center;
+}
+.base-help,
+.base-fitted {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--dim);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.base-fitted { font-family: var(--mono); font-size: 0.66rem; color: var(--faint); }
+#btn-walk { margin-right: auto; }
 
 /* ------------------------------------------------------------ responsive */
 

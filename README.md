@@ -31,7 +31,7 @@ the bottom of the menu takes any phrase you like.
 | `F` | floodlights |
 | `R` | sonar ping |
 | `M` | sea chart |
-| `E` | dock at the Hull |
+| `E` | dock at the Hull · aboard: use |
 | `Tab` | look in the hold |
 | `Esc` | pause |
 
@@ -56,6 +56,23 @@ overhead.
 
 **The loop.** Dive from the Hull → hold the beam on a fish until it comes in →
 come back, sell the hold, refit → go deeper than you could last time.
+
+**The Hull.** Dock and the clamps take the boat into a moon pool, and you
+climb out and walk. `WASD` to walk, `Shift` to run, the mouse to look (click
+once), `E` to use whatever you are facing:
+
+- the **market** terminal by the door sells the hold;
+- the **drydock** console at the bow refits the boat — and the refit is on the
+  boat: armour plates, frame rings, a bigger screw in a duct, cargo pods, cell
+  racks, more lamps, a sonar dome, torpedo doors, a net drum, a repair drone,
+  a reactor glow. The gantry swings over and welds when you buy something;
+- the **manifest** in the ops room keeps the record;
+- **the tank** beside it holds two of every species you have ever brought
+  home, swimming — the original mnemoquarium, still running;
+- the **hatch** by the pool puts you back in the boat and floods the airlock.
+
+A controller walks with the sticks and uses with `A`; a thumb walks with the
+left of the screen, looks with the right, and taps the prompt.
 
 **Pressure is the gate.** The stock casing is rated to 140 m. Go much past it
 and the sea starts folding the boat shut — and everything worth real money
@@ -110,6 +127,30 @@ A **gulper** is mostly mouth. A leviathan is longer than your lamps reach. A
 warm colour as the Hull's — there is no dock. A Forgetting Wraith takes a
 specimen out of your hold *and out of your record*. The Kraken of Static lives
 down there too and is not a fair fight yet.
+
+Newer, and worse: **Ink Widows** walk the kelp floor like the harmless
+octopus do, then wrap themselves over your glass, hold the boat, and black the
+window out with ink. **Razorfin** barracuda hunt the shelf in packs of three to
+five. The **Stinging Choir** drift up out of the twilight as a cloud of lit
+bells, and sting the cell flat.
+
+Two refits answer them: **Ink Scrubbers** clear the glass faster, and the
+**Shock Lattice** makes anything that grabs the hull let go, hurting.
+
+### What lives here anyway
+
+Not everything is money or teeth. Octopus work the floor and change colour
+while you watch (get close and they ink and jet away), moon jellies climb on
+their own pulse and light up in the dark, mantas fly slow circles in the blue,
+and green turtles cruise the shelf. None of them can be netted. The first good
+look at each one goes in the logbook, and the Hull pays a small sighting fee.
+
+### How it looks
+
+The underwater light is modelled per colour channel, with caustics on the
+floor and an HDR bloom. Near the surface, light shafts fan down from the sun;
+at depth your floodlights throw visible beams through the snow. Pause →
+*Graphics* trades resolution for frame rate automatically, or pins it.
 
 Between you and them: boulder clusters, coral towers up to 40 m, and curtains
 of weed thick enough to lose something in.
@@ -177,6 +218,9 @@ python3 -m http.server 8765 --directory web
 - `web/src/quality.js` — the resolution governor
 - `web/src/input.js` — gamepads and touch; `web/src/stick.js` — their arithmetic
 - `web/src/frame.js` — how a real frame becomes simulation steps
+- `web/src/base.js` — the Hull on foot; `web/src/walk.js` — its collision and "use"
+- `web/src/submodel.js` — the boat's exterior, built from its upgrades
+- `web/src/ambient.js` — octopus, jellies, mantas, turtles (instanced, GPU-animated)
 - `web/ARCHITECTURE.md` — the contract every module is written against
 
 `web/engine.js` mirrors `src/mnemoquarium/model.py` rule for rule, so the

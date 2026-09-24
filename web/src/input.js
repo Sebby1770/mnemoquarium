@@ -128,11 +128,22 @@ export class InputDevices {
 
   /* ------------------------------------------------------------- per frame -- */
 
+  /* Who the sticks are steering: the boat, or you on foot inside the Hull.
+     Both expose the same `analog` and `lookDX/lookDY`. */
+  pilot() {
+    const game = this.game;
+    return game.mode === "base" && game.base ? game.base : game.sub;
+  }
+
   update(dt) {
     const sub = this.game.sub;
     if (!sub) return;
-    const a = sub.analog;
-    a.forward = 0; a.strafe = 0; a.vert = 0; a.boost = false; a.dock = false;
+    for (const p of [sub, this.game.base]) {
+      if (!p) continue;
+      const z = p.analog;
+      z.forward = 0; z.strafe = 0; z.vert = 0; z.boost = false; z.dock = false;
+    }
+    const a = this.pilot().analog;
 
     this.pollPad(dt, a, sub);
     if (this.touchOn) this.applyTouch(a, sub);
@@ -161,6 +172,19 @@ export class InputDevices {
 
     const game = this.game;
     const mode = game.mode;
+
+    // On foot: the same sticks walk and look, and A (or X) uses what you face.
+    if (mode === "base" && game.base) {
+      const [wx, wy] = shapeStick(axes[0], axes[1]);
+      a.forward += -wy;
+      a.strafe += wx;
+      const [vx, vy] = shapeStick(axes[2], axes[3], 0.14, 1.8);
+      game.base.lookDX += vx * PAD_LOOK_PX * dt;
+      game.base.lookDY += vy * PAD_LOOK_PX * dt;
+      if (now[B.ls]) a.boost = true;
+      if (down.includes(B.a) || down.includes(B.x)) game.base.interact();
+      return;
+    }
 
     if (mode !== "dive") {
       if (this.padFiring) this.releasePad(sub);
@@ -347,7 +371,8 @@ export class InputDevices {
   }
 
   touchDown(e) {
-    if (this.game.mode !== "dive") return;
+    const mode = this.game.mode;
+    if (mode !== "dive" && mode !== "base") return;
     const target = e.target;
     e.preventDefault();
     const sub = this.game.sub;
@@ -397,9 +422,9 @@ export class InputDevices {
       this.stickBase.classList.toggle("boost", v.boost);
     } else if (e.pointerId === this.lookId) {
       e.preventDefault();
-      const sub = this.game.sub;
-      sub.lookDX += (e.clientX - this.lookLast.x) * TOUCH_LOOK_SCALE;
-      sub.lookDY += (e.clientY - this.lookLast.y) * TOUCH_LOOK_SCALE;
+      const pilot = this.pilot();
+      pilot.lookDX += (e.clientX - this.lookLast.x) * TOUCH_LOOK_SCALE;
+      pilot.lookDY += (e.clientY - this.lookLast.y) * TOUCH_LOOK_SCALE;
       this.lookLast.x = e.clientX;
       this.lookLast.y = e.clientY;
     }
@@ -451,7 +476,14 @@ export class InputDevices {
   }
 
   applyTouch(a) {
-    if (this.game.mode !== "dive") {
+    const mode = this.game.mode;
+    if (mode === "base") {
+      a.forward += -this.stickVec.y;
+      a.strafe += this.stickVec.x;
+      if (this.stickVec.boost) a.boost = true;
+      return;
+    }
+    if (mode !== "dive") {
       this.clearTouch();
       return;
     }

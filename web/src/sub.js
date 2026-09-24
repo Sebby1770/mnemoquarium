@@ -15,6 +15,7 @@ import { clamp, clamp01, damp, lerp, smoothstep, wrapAngle, TAU } from "./util.j
 /* Scratch. The per-frame path allocates nothing, so every vector it needs is
    hoisted here and reused. Treat them as write-then-read-immediately. */
 const _v1 = new THREE.Vector3();
+const _zAxis = new THREE.Vector3(0, 0, 1);
 const _v2 = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -159,6 +160,8 @@ export class Submarine {
     this.inputEnabled = true;
     this.pointerLocked = false;
     this.touchLook = false;
+    this.ink = 0;              // 0..1 of the glass blacked out (post.js draws it)
+    this.grabbedBy = null;     // a creature holding the boat
     this.intentionalUnlock = false;
     this.lookDX = 0;
     this.lookDY = 0;
@@ -222,6 +225,8 @@ export class Submarine {
       this.floodTargets.push(target);
     }
 
+    this.buildBeams();
+
     /* Always on, cheap, and the only reason you can see your own bow with the
        floods cut. The dark is meant to cost something, not everything. */
     this.hullGlow = new THREE.PointLight(0x6fd4e8, 5.5, 20, 1);
@@ -234,6 +239,103 @@ export class Submarine {
     this.cabinGlow.position.set(0, 0.1, 0.45);
 
     this.setLights(this.lightsOn);
+  }
+
+  /* The floods, seen from the side: a soft cone of lit water along each
+     beam, brightest near the lamp and on its axis. The spotlights light what
+     they hit; this is the light hitting the water in between, which is what
+     makes a lamp in the deep look like a lamp and not like a flashlight on a
+     wall. Additive, no depth write, and scaled by how dark and how full of
+     snow the water is. */
+  buildBeams() {
+    const geometry = new THREE.ConeGeometry(1, 1, 28, 1, true);
+    // Apex at the origin, opening toward +Z, one unit long.
+    geometry.translate(0, -0.5, 0);
+    geometry.rotateX(-Math.PI / 2);
+    this.beamUniforms = { uStrength: { value: 0 }, uColour: { value: new THREE.Color(0xcfeeff) } };
+    const material = new THREE.ShaderMaterial({
+      uniforms: this.beamUniforms,
+      vertexShader: /* glsl */ `
+        varying float vAlong;
+        varying vec3 vPos;
+        varying vec3 vApex;
+        varying vec3 vAxis;
+        varying float vSlope;
+        void main() {
+          vAlong = position.z;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vPos = mv.xyz;
+          vApex = (modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          vAxis = normalize((modelViewMatrix * vec4(0.0, 0.0, 1.0, 0.0)).xyz);
+          // Radius over length of the scaled cone.
+          vSlope = length(modelViewMatrix[0].xyz) / max(length(modelViewMatrix[2].xyz), 1e-4);
+          gl_Position = projectionMatrix * mv;
+        }`,
+      fragmentShader: /* glsl */ `
+        uniform float uStrength;
+        uniform vec3 uColour;
+        varying float vAlong;
+        varying vec3 vPos;
+        varying vec3 vApex;
+        varying vec3 vAxis;
+        varying float vSlope;
+        void main() {
+          // The cone's true normal, per pixel, so the facets of the mesh never show.
+          vec3 rel = vPos - vApex;
+          vec3 radial = rel - vAxis * dot(rel, vAxis);
+          vec3 n = normalize(normalize(radial) - vAxis * vSlope);
+          vec3 v = normalize(-vPos);
+          float fade = pow(1.0 - clamp(vAlong, 0.0, 1.0), 1.8) * smoothstep(0.0, 0.08, vAlong);
+          // Looking through the middle of the cone crosses the most lit water;
+          // the rim is a grazing sliver of it.
+          float core = pow(abs(dot(n, v)), 2.2);
+          gl_FragColor = vec4(uColour * fade * core * uStrength, 1.0);
+        }`,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    this.disposables.push(geometry, material);
+    this.beams = [];
+    for (let i = 0; i < this.floods.length; i += 1) {
+      const beam = new THREE.Mesh(geometry, material);
+      beam.frustumCulled = false;
+      beam.renderOrder = 4;
+      this.object.add(beam);
+      this.beams.push(beam);
+    }
+    this.layoutBeams();
+  }
+
+  layoutBeams() {
+    if (!this.beams) return;
+    const range = this.stats.lightRange || SUB.lightRangeBase;
+    for (let i = 0; i < this.beams.length; i += 1) {
+      const spot = this.floods[i];
+      const target = this.floodTargets[i];
+      const beam = this.beams[i];
+      const len = range * 0.75;
+      const radius = Math.tan(spot.angle * 0.8) * len;
+      beam.position.copy(spot.position);
+      _v1.copy(target.position).sub(spot.position).normalize();
+      beam.quaternion.setFromUnitVectors(_zAxis, _v1);
+      beam.scale.set(radius, radius, len);
+    }
+  }
+
+  updateBeams() {
+    if (!this.beamUniforms) return;
+    const game = this.game;
+    const surfaced = game.sky && game.sky.above;
+    let s = 0;
+    if (this.lightsOn && !surfaced && !this.docked) {
+      // Invisible in sunlit water, plain in the dark, and thicker with snow.
+      const dark = clamp01((this.depth - 25) / 260);
+      s = 0.015 + dark * 0.075;
+    }
+    this.beamUniforms.uStrength.value = damp(this.beamUniforms.uStrength.value, s, 6, game.dt || 0.016);
   }
 
   buildCockpit() {
@@ -623,6 +725,7 @@ export class Submarine {
       spot.intensity = this.lightsOn ? range * 0.85 : 0;
       this.floodTargets[i].position.z = -range;
     }
+    this.layoutBeams();
     this.hullGlow.distance = clamp(range * 0.5, 14, 40);
 
     this.cargoFull = this.cargoCount() >= s.cargoSlots;
@@ -811,6 +914,8 @@ export class Submarine {
     this.sonarCooldown = 0;
     this.bumpTimer = 0;
     this.creakTimer = 2;
+    this.ink = 0;
+    this.grabbedBy = null;
     this.zeroInput();
     this.dock();
   }
@@ -825,6 +930,11 @@ export class Submarine {
     if (this.stats !== this.game.stats && this.game.stats) this.applyStats();
 
     this.sonarCooldown = Math.max(0, this.sonarCooldown - dt);
+    if (this.ink > 0) {
+      // Scrubbers shorten it; stock glass takes about five seconds to clear.
+      const kept = (this.stats && this.stats.inkKept != null ? this.stats.inkKept : 100) / 100;
+      this.ink = Math.max(0, this.ink - dt / (0.8 + 4.4 * kept));
+    }
     this.bumpTimer = Math.max(0, this.bumpTimer - dt);
     this.boundsTimer = Math.max(0, this.boundsTimer - dt);
 
@@ -850,6 +960,7 @@ export class Submarine {
     if (flying) this.updatePressure(dt);
     this.updateReadouts(dt);
     this.updateCockpit();
+    this.updateBeams();
     this.updateCamera(dt);
 
     if (flying && this.firing) this.fire();
@@ -956,6 +1067,12 @@ export class Submarine {
   integrate(dt) {
     const s = this.stats;
     const v = this.velocity;
+
+    // Something has the boat. It goes where it is held.
+    if (this.grabbedBy) {
+      if (this.grabbedBy.holding > 0 && this.grabbedBy.alive) v.multiplyScalar(Math.pow(0.05, dt));
+      else this.grabbedBy = null;
+    }
 
     /* Quadratic drag first: it is what makes a heavy boat coast instead of
        stopping dead when you let go. */
