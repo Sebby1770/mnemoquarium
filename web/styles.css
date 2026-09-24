@@ -242,6 +242,20 @@ body[data-mode="paused"] #hud { opacity: 0.35; }
   background: var(--amber);
   box-shadow: 0 0 8px rgba(255, 196, 107, 0.7);
 }
+#compass-needle::after {
+  content: attr(data-range);
+  position: absolute;
+  bottom: 0;
+  left: 5px;
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--amber);
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
+}
+#compass-needle[data-edge="right"]::after { left: auto; right: 5px; }
 #compass::after {
   content: "";
   position: absolute;
@@ -502,7 +516,7 @@ body[data-mode="paused"] #hud { opacity: 0.35; }
   --charge: 1;
   position: absolute;
   right: var(--hud-gap);
-  bottom: calc(var(--hud-gap) + 4.6rem);
+  bottom: calc(var(--hud-gap) + 6rem);
   padding: 0.22rem 0.6rem;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -522,6 +536,8 @@ body[data-mode="paused"] #hud { opacity: 0.35; }
   transform: scaleX(var(--charge));
 }
 #sonar-note span { position: relative; }
+/* Nothing to say until the first ping; an empty pill sat on the speed gauge. */
+#sonar-note:empty { display: none; }
 
 #log {
   position: absolute;
@@ -1103,6 +1119,81 @@ button[data-armed="1"] {
 }
 .row-toggle input[type="range"] { flex: 1; accent-color: var(--accent); }
 .row-toggle input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+.row-toggle select {
+  flex: 1;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-solid);
+  color: var(--text);
+  font: inherit;
+  accent-color: var(--accent);
+}
+
+/* ------------------------------------------------------------ sea chart */
+
+.chart-inner {
+  width: auto;
+  max-width: 96vw;
+  max-height: 96vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.chart-head h2 { margin: 0; }
+.chart-close {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.chart-close:hover, .chart-close:focus-visible { color: var(--text); border-color: var(--line-strong); }
+.chart-body {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+/* Square, and as big as the height allows: the sea is round. */
+.chart-stage {
+  position: relative;
+  flex: none;
+  width: min(calc(96vw - 260px - 4.5rem), calc(96vh - 8.5rem));
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #03060c;
+}
+.chart-canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+.chart-canvas:active { cursor: grabbing; }
+.chart-side { width: 240px; display: grid; align-content: start; gap: 1rem; font-size: 0.8rem; }
+.chart-readout { display: grid; gap: 0.45rem; margin: 0; }
+.chart-row { display: grid; gap: 0.05rem; }
+.chart-row dt {
+  font-size: 0.64rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.chart-row dd { margin: 0; font-family: var(--mono); color: var(--text); }
+.chart-legend { display: grid; gap: 0.3rem; }
+.chart-key { display: flex; align-items: center; gap: 0.5rem; color: var(--dim); }
+.chart-dim { margin-left: auto; font-family: var(--mono); font-size: 0.7rem; color: var(--faint); }
+.chart-swatch { flex: none; width: 14px; height: 10px; border-radius: 2px; }
+.chart-swatch-line { height: 2px; background: var(--amber); }
+.chart-swatch-rumour { height: 10px; border: 1px dashed rgba(207, 227, 238, 0.55); border-radius: 50%; }
+@media (max-width: 820px) {
+  .chart-body { flex-direction: column; align-items: stretch; }
+  .chart-stage { width: min(100%, 62vh); align-self: center; }
+  .chart-side { width: auto; }
+}
 
 .bar {
   height: 4px;
@@ -1150,7 +1241,7 @@ body[data-hold="open"] #panel-cargo { display: grid; }
   .instrument strong { font-size: 0.84rem; }
   #log { bottom: calc(var(--hud-gap) + 6rem); width: min(32vw, 320px); }
   .log-line { font-size: 0.7rem; }
-  #sonar-note { bottom: calc(var(--hud-gap) + 4rem); }
+  #sonar-note { bottom: calc(var(--hud-gap) + 5.2rem); }
 }
 
 @media (max-height: 560px) {

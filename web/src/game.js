@@ -22,6 +22,8 @@ import { Landmarks } from "./landmarks.js";
 import { SkyAndSea } from "./sky.js";
 import { PostFX } from "./post.js";
 import { HUD } from "./hud.js";
+import { Chart } from "./chart.js";
+import { ResolutionGovernor, pixelRatioFor } from "./quality.js";
 
 const MAX_DT = 1 / 20;         // a long frame must not teleport the boat
 const SAVE_INTERVAL = 4;       // seconds between debounced writes
@@ -61,7 +63,8 @@ export class Game {
       powerPreference: "high-performance",
       stencil: false,
     });
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    this.governor = new ResolutionGovernor(this.profile.settings && this.profile.settings.quality);
+    this.renderer.setPixelRatio(pixelRatioFor(window.devicePixelRatio, this.governor.scale));
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -95,6 +98,7 @@ export class Game {
     this.combat = new Combat(this);
     this.audio = new Audio(this);
     this.hud = new HUD(this);
+    this.chart = new Chart(this);
 
     /* Patch everything already in the scene, then keep patching as creatures
        arrive. register() is idempotent, so spawning is cheap. */
@@ -142,13 +146,21 @@ export class Game {
   resize() {
     const w = window.innerWidth;
     const h = Math.max(1, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    this.renderer.setPixelRatio(pixelRatioFor(window.devicePixelRatio, this.governor.scale));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     // The cockpit window is cut to the frustum, so it is re-cut on resize.
     if (this.sub && this.sub.layoutCockpit) this.sub.layoutCockpit();
     if (this.post) this.post.setSize();
+    this.governor.reset();
+  }
+
+  /* Graphics setting from the pause panel: "auto" | "high" | "low". */
+  setQuality(mode) {
+    const before = this.governor.scale;
+    this.governor.setMode(mode);
+    if (this.governor.scale !== before) this.resize();
   }
 
   /* ===================================================================== */
@@ -187,6 +199,9 @@ export class Game {
     const dt = Math.min(MAX_DT, raw);
     this.dt = dt;
 
+    // Only a frame that draws the sea at full cost says anything about the GPU.
+    if (this.mode === "dive" && this.governor.sample(raw) !== null) this.resize();
+
     const live = this.mode === "dive" || this.mode === "station";
     if (live) this.elapsed += dt;
 
@@ -209,6 +224,7 @@ export class Game {
     this.vfx.update(dt);
     this.audio.update(dt);
     this.hud.update(dt);
+    this.chart.update(dt);
 
     this.saveTimer -= dt;
     if (this.dirty && this.saveTimer <= 0) this.persist(true);
@@ -241,6 +257,7 @@ export class Game {
     if (this.hud) this.hud.setMode(mode);
     if (this.audio && mode !== "dive") this.audio.setThreat(0);
 
+    this.governor.reset();
     this.bus.emit("mode", { mode, prev });
     this.persist();
   }
@@ -520,7 +537,7 @@ export class Game {
     document.removeEventListener("visibilitychange", this._onVisibility);
     window.removeEventListener("pagehide", this._onUnload);
 
-    for (const system of [this.hud, this.audio, this.combat, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
+    for (const system of [this.chart, this.hud, this.audio, this.combat, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
       try {
         if (system && system.dispose) system.dispose();
       } catch (err) {

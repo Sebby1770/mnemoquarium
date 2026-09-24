@@ -2,6 +2,40 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.5.0] - 2026-09-24
+
+### Added
+- **A sea chart (`M`).** The key was bound but did nothing; now it holds the
+  boat and opens a chart of the whole sea: the floor shaded from the same
+  heightfield you fly over, with contours every hundred metres and a brighter
+  line at each band, the Hull, your position and heading, and the way you came
+  since you left the clamps. An amber line marks where the floor drops past
+  your casing's rating, so you can see which ground you can reach and which you
+  are buying a casing for. Surveyed landmarks are named; the rest are rumours —
+  a dashed circle somewhere near the truth, never the point, so the survey fee
+  is still for going there. Scroll zooms, drag pans, double-click finds the
+  boat. The readout gives the bearing home and to the nearest rumour.
+- **Adaptive resolution.** The scene renders into an HDR target with 4x MSAA
+  and a bloom chain at up to 2x device pixels, which a laptop GPU cannot fill
+  at 60. A governor now watches the real frame time and trades resolution for
+  it — quick to drop, slow to climb, and it will not retry a scale that just
+  failed. A *Graphics* setting on the pause panel (Auto / Sharp / Fast) pins it
+  if you would rather.
+- `Q` and the mouse wheel step through the weapon rack, skipping anything the
+  drydock has not fitted.
+
+### Fixed
+- **Surveyed landmarks were forgotten on reload**, and paid their survey fee
+  again every session: the save migration kept a whitelist of stats and
+  `landmarks` was not on it.
+- **The drift net could not be selected.** The rack labels it `4` and the README
+  says `4`, but only `1`–`3` were bound.
+- The distance-to-the-Hull readout on the compass was written into the 2 px
+  needle and wrapped one character per line across the tape.
+- Before the first sonar ping, an empty sonar pill sat on top of the speed
+  instrument.
+- Selecting the drift net without one fitted said "no tubes fitted".
+
 ## [1.4.0] - 2026-09-23
 
 ### Added

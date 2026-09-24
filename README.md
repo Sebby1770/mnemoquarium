@@ -26,10 +26,11 @@ the bottom of the menu takes any phrase you like.
 | mouse | look (click once to lock) |
 | `LMB` | fire |
 | `RMB` | capture beam — hold it on a fish |
-| `4` | drift net — one throw takes a whole shoal |
 | `1` `2` `3` `4` | harpoon / torpedo / sonar lance / drift net |
+| `Q` / mouse wheel | next weapon (skips what the drydock has not fitted) |
 | `F` | floodlights |
 | `R` | sonar ping |
+| `M` | sea chart |
 | `E` | dock at the Hull |
 | `Tab` | look in the hold |
 | `Esc` | pause |
@@ -48,6 +49,18 @@ lives below your rating. Buy the Pressure Casing first.
 
 **Your lamps are how they find you.** `F` kills them. Running dark is cheaper
 and much worse.
+
+**The chart.** `M` holds the boat and opens the sea chart: the floor drawn from
+the same heightfield you fly over, the Hull, the way you came since you left
+the clamps, and an amber line where the floor drops past what your casing is
+rated for — inside it you can touch bottom. Landmarks you have surveyed are
+marked and named. The ones you have not are only rumours: a dashed circle
+somewhere near the truth. The survey fee is for going there.
+
+**Graphics.** The pause panel has a *Graphics* setting. *Auto* (the default)
+watches the frame time and lowers the render resolution when the GPU cannot
+keep up, then earns it back slowly when it can. *Sharp* pins full resolution;
+*Fast* pins it low.
 
 ### The water column
 
@@ -145,6 +158,9 @@ python3 -m http.server 8765 --directory web
 - `web/src/creatures.js` — the six, and their manners
 - `web/src/combat.js` — harpoon, torpedoes, sonar lance, the beam
 - `web/src/hud.js` — instruments, market, drydock, manifest
+- `web/src/chart.js` — the sea chart
+- `web/src/nav.js` — bearings, ranges, rumours (shared by the compass and the chart)
+- `web/src/quality.js` — the resolution governor
 - `web/ARCHITECTURE.md` — the contract every module is written against
 
 `web/engine.js` mirrors `src/mnemoquarium/model.py` rule for rule, so the

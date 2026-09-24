@@ -53,6 +53,9 @@ modules disagree the one that broke this file is wrong.
 | `src/audio.js` | agent | `Audio` |
 | `src/save.js` | agent | `loadProfile, saveProfile, newProfile, clearProfile, SAVE_KEY, migrate` |
 | `src/game.js` + `src/main.js` | agent | `Game`; `main.js` has no exports |
+| `src/chart.js` | agent | `Chart` — the sea chart panel (`M`), built from JS |
+| `src/nav.js` | agent | `bearingOf, compassPoint, formatRange, rumourCentre, COMPASS_POINTS, RUMOUR_RADIUS` — no three.js |
+| `src/quality.js` | agent | `ResolutionGovernor, pixelRatioFor, SCALE, QUALITY_MODES` — no three.js |
 
 ## The `game` object
 
@@ -69,7 +72,7 @@ game = {
   profile,             // persisted player profile (see save.js)
   stats,               // result of progression.computeStats(profile.upgrades)
   ecology, world, sub, fish, creatures, combat, vfx, hud, audio,
-  mode,                // "boot" | "start" | "dive" | "station" | "paused" | "dead"
+  mode,                // "boot" | "start" | "dive" | "station" | "paused" | "chart" | "dead"
   elapsed,             // seconds of dive time
   dt,                  // last frame delta, clamped to <= 1/20
   paused,              // bool
@@ -136,8 +139,9 @@ audio -> hud`, then `renderer.render(scene, camera)`.
   cargo: [CargoItem],
   ammo: { torpedo: 0 },
   stats: { dives:0, fishSold:0, creditsEarned:0, deepest:0, deaths:0,
-           kills:{}, discovered:[] /* species indices seen */ },
-  settings: { sound:false, invertY:false, sensitivity:1 },
+           kills:{}, discovered:[] /* species indices seen */,
+           landmarks:[] /* surveyed landmark ids, "lm-N" */ },
+  settings: { sound:false, invertY:false, sensitivity:1, quality:"auto" },
   updated: 0,   // ms epoch
 }
 ```

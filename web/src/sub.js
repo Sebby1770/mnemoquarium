@@ -379,6 +379,8 @@ export class Submarine {
     this.onContextMenu = (e) => e.preventDefault();
     this.onLockChange = () => this.handleLockChange();
     this.onBlur = () => this.zeroInput();
+    this.onWheel = (e) => this.handleWheel(e);
+    this.wheelAccum = 0;
 
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
@@ -390,6 +392,7 @@ export class Submarine {
       this.canvas.addEventListener("mousedown", this.onMouseDown);
       this.canvas.addEventListener("click", this.onCanvasClick);
       this.canvas.addEventListener("contextmenu", this.onContextMenu);
+      this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     }
   }
 
@@ -432,8 +435,11 @@ export class Submarine {
           this.bus.emit("ui:cargo", { open: true });
         }
         break;
-      case "weapon1": case "weapon2": case "weapon3":
+      case "weapon1": case "weapon2": case "weapon3": case "weapon4":
         if (!e.repeat) this.selectWeapon(Number(action.slice(-1)) - 1);
+        break;
+      case "cycle":
+        if (!e.repeat) this.cycleWeapon(e.shiftKey ? -1 : 1);
         break;
       case "map":
         if (!e.repeat) this.bus.emit("ui:map", {});
@@ -557,6 +563,34 @@ export class Submarine {
   selectWeapon(index) {
     const combat = this.game.combat;
     if (combat) combat.selectWeapon(index);
+  }
+
+  /* Step through the rack, past anything the drydock has not fitted yet. An
+     empty torpedo tube is still landed on, because the rack says it is empty. */
+  cycleWeapon(step) {
+    const combat = this.game.combat;
+    if (!combat || !combat.weapons || !combat.weapons.length) return;
+    const list = combat.weapons;
+    const n = list.length;
+    let at = Number(combat.currentIndex) || 0;
+    for (let tries = 0; tries < n - 1; tries += 1) {
+      at = ((at + step) % n + n) % n;
+      if (!list[at].locked) {
+        combat.selectWeapon(at);
+        return;
+      }
+    }
+  }
+
+  /* A trackpad sends a stream of tiny deltas, so the wheel only counts once
+     enough of it has built up in one direction. */
+  handleWheel(e) {
+    if (!this.inputEnabled || this.game.mode !== "dive") return;
+    e.preventDefault();
+    this.wheelAccum += e.deltaY;
+    if (Math.abs(this.wheelAccum) < 40) return;
+    this.cycleWeapon(this.wheelAccum > 0 ? 1 : -1);
+    this.wheelAccum = 0;
   }
 
   /* ====================================================================== */
@@ -1247,6 +1281,7 @@ export class Submarine {
       this.canvas.removeEventListener("mousedown", this.onMouseDown);
       this.canvas.removeEventListener("click", this.onCanvasClick);
       this.canvas.removeEventListener("contextmenu", this.onContextMenu);
+      this.canvas.removeEventListener("wheel", this.onWheel);
     }
     this.releaseLook();
 

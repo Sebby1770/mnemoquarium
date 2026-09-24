@@ -14,7 +14,9 @@ globalThis.MnemoEngine = require("../engine.js");
 const { Ecology } = await import("../src/ecology.js");
 const progression = await import("../src/progression.js");
 const save = await import("../src/save.js");
-const { ZONES, UPGRADES, CREATURES, RARITY, zoneForDepth } = await import("../src/config.js");
+const { ZONES, UPGRADES, CREATURES, RARITY, WEAPONS, HOTKEYS, zoneForDepth } = await import("../src/config.js");
+const quality = await import("../src/quality.js");
+const nav = await import("../src/nav.js");
 
 const PHRASE = "forgotten kiosk under neon rain";
 
@@ -200,4 +202,106 @@ test("saving without any storage at all is a no-op, not a crash", () => {
   assert.doesNotThrow(() => save.clearProfile());
   if (previous === undefined) delete globalThis.localStorage;
   else globalThis.localStorage = previous;
+});
+
+test("surveyed landmarks survive a save, so their fees are only paid once", () => {
+  const profile = save.newProfile(PHRASE, 3);
+  profile.stats.landmarks = ["lm-0", "lm-7", "lm-7", "lm-12"];
+  const back = save.migrate(JSON.parse(JSON.stringify(profile)));
+  assert.deepEqual(back.stats.landmarks, ["lm-0", "lm-7", "lm-12"]);
+
+  const junk = save.migrate({ phrase: PHRASE, stats: { landmarks: ["lm-1", 4, "<b>", "lm-99999", null] } });
+  assert.deepEqual(junk.stats.landmarks, ["lm-1"], "only well-formed ids are kept");
+  assert.deepEqual(save.migrate({ phrase: PHRASE }).stats.landmarks, [], "an old save has none");
+});
+
+test("the graphics setting is saved, and nonsense falls back to auto", () => {
+  assert.equal(save.newProfile(PHRASE, 1).settings.quality, "auto");
+  assert.equal(save.migrate({ phrase: PHRASE, settings: { quality: "low" } }).settings.quality, "low");
+  assert.equal(save.migrate({ phrase: PHRASE, settings: { quality: "ultra" } }).settings.quality, "auto");
+  assert.equal(save.migrate({ phrase: PHRASE }).settings.quality, "auto");
+});
+
+test("every weapon on the rack has a number key", () => {
+  const count = Object.keys(WEAPONS).length;
+  for (let i = 1; i <= count; i += 1) {
+    assert.ok(Array.isArray(HOTKEYS[`weapon${i}`]) && HOTKEYS[`weapon${i}`].length,
+      `weapon ${i} of ${count} has no key`);
+  }
+  const codes = Object.values(HOTKEYS).flat();
+  assert.equal(new Set(codes).size, codes.length, "no key is bound to two actions");
+});
+
+/* Feed the governor a steady frame time for a number of seconds. */
+function run(gov, frameTime, seconds) {
+  const changes = [];
+  for (let t = 0; t < seconds; t += frameTime) {
+    const next = gov.sample(frameTime);
+    if (next !== null) changes.push(next);
+  }
+  return changes;
+}
+
+test("the resolution governor gives up pixels when frames are slow", () => {
+  const gov = new quality.ResolutionGovernor("auto");
+  assert.equal(gov.scale, 1);
+  assert.deepEqual(run(gov, 1 / 60, 10), [], "a steady 60 costs nothing");
+  const drops = run(gov, 1 / 25, 20);
+  assert.ok(drops.length >= 3, "a slideshow keeps stepping down");
+  assert.equal(gov.scale, quality.SCALE.min, "down to the floor and no further");
+  for (let i = 1; i < drops.length; i += 1) assert.ok(drops[i] < drops[i - 1]);
+});
+
+test("the resolution governor climbs back slowly and not into a scale that failed", () => {
+  const gov = new quality.ResolutionGovernor("auto");
+  run(gov, 1 / 30, 3);
+  const failed = gov.scale;
+  assert.ok(failed < 1, "it dropped");
+  const rises = run(gov, 1 / 120, 15);
+  assert.ok(rises.length > 0, "fast frames earn resolution back");
+  assert.ok(rises.every((s) => s < failed + 0.1), "but not the scale that was too slow, while it remembers");
+  run(gov, 1 / 120, 90);
+  assert.equal(gov.scale, 1, "and once it has forgotten, all the way home");
+});
+
+test("the resolution governor ignores hitches, and the fixed modes ignore everything", () => {
+  const gov = new quality.ResolutionGovernor("auto");
+  assert.deepEqual(run(gov, 0.5, 30), [], "a tab switch is not a slow GPU");
+  const high = new quality.ResolutionGovernor("high");
+  assert.deepEqual(run(high, 1 / 20, 20), []);
+  assert.equal(high.scale, 1);
+  const low = new quality.ResolutionGovernor("low");
+  assert.equal(low.scale, quality.SCALE.low);
+  assert.equal(new quality.ResolutionGovernor("nonsense").mode, "auto");
+});
+
+test("pixel ratio is capped at 2 and floored at a half", () => {
+  assert.equal(quality.pixelRatioFor(3, 1), 2);
+  assert.equal(quality.pixelRatioFor(2, 0.5), 1);
+  assert.equal(quality.pixelRatioFor(1, 0.3), 0.5);
+  assert.equal(quality.pixelRatioFor(undefined, 1), 1);
+});
+
+test("bearings call -Z north and go clockwise", () => {
+  assert.equal(nav.bearingOf(0, -1), 0);
+  assert.equal(nav.bearingOf(1, 0), 90);
+  assert.equal(nav.bearingOf(0, 1), 180);
+  assert.equal(nav.bearingOf(-1, 0), 270);
+  assert.equal(nav.compassPoint(0), "N");
+  assert.equal(nav.compassPoint(359), "N");
+  assert.equal(nav.compassPoint(135), "SE");
+  assert.equal(nav.formatRange(420.4), "420 m");
+  assert.equal(nav.formatRange(1250), "1.3 km");
+});
+
+test("a rumour is fixed, vague, and always contains the place", () => {
+  for (let seed = 1; seed < 4e9; seed += 97531247) {
+    const lm = { seed, position: { x: 1200, y: -400, z: -800 } };
+    const a = nav.rumourCentre(lm);
+    const b = nav.rumourCentre(lm);
+    assert.deepEqual(a, b, "the same landmark draws the same circle");
+    const off = Math.hypot(a.x - lm.position.x, a.z - lm.position.z);
+    assert.ok(off < a.radius, "the truth is inside the circle");
+    assert.ok(off > 20, "but not at its centre");
+  }
 });

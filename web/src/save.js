@@ -20,6 +20,7 @@ const MAX_TEXT = 80;
 const MAX_GLYPH = 4;
 const MAX_KILL_KEYS = 64;
 const MAX_DISCOVERED = 64;
+const MAX_LANDMARKS = 64;
 const MAX_MUTATION_TAGS = 8;
 const MAX_CREDITS = 1e12;
 const MAX_DEPTH = 20000;
@@ -27,6 +28,7 @@ const MAX_DEPTH = 20000;
 const PANIC_CARGO = 24;
 
 const CARGO_KINDS = new Set(["fish", "trophy"]);
+const QUALITY_MODES = new Set(["auto", "high", "low"]);
 const UPGRADE_IDS = UPGRADES.map((spec) => spec.id);
 const UPGRADE_CAPS = new Map(UPGRADES.map((spec) => [spec.id, Math.max(0, spec.values.length - 1)]));
 
@@ -189,7 +191,21 @@ function migrateStats(raw) {
     deaths: int(src.deaths, 0, 0, 999999),
     kills: migrateKills(src.kills),
     discovered: migrateDiscovered(src.discovered),
+    // Surveyed landmark ids. Dropping these on save meant every landmark paid
+    // its survey fee again after a reload.
+    landmarks: migrateLandmarks(src.landmarks),
   };
+}
+
+function migrateLandmarks(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set();
+  for (const entry of raw) {
+    if (seen.size >= MAX_LANDMARKS) break;
+    if (typeof entry !== "string" || !/^lm-\d{1,3}$/.test(entry)) continue;
+    seen.add(entry);
+  }
+  return [...seen];
 }
 
 function migrateSettings(raw) {
@@ -199,6 +215,8 @@ function migrateSettings(raw) {
     invertY: bool(src.invertY, false),
     // The pause panel's slider is 20..300 percent; store it as a plain factor.
     sensitivity: Math.max(0.2, Math.min(3, num(src.sensitivity, 1))),
+    // "auto" lets the render scale follow the frame rate; the other two pin it.
+    quality: QUALITY_MODES.has(src.quality) ? src.quality : "auto",
   };
 }
 
@@ -224,8 +242,9 @@ export function newProfile(phrase, seed) {
       deaths: 0,
       kills: {},
       discovered: [],
+      landmarks: [],
     },
-    settings: { sound: false, invertY: false, sensitivity: 1 },
+    settings: { sound: false, invertY: false, sensitivity: 1, quality: "auto" },
     updated: now(),
   };
 }

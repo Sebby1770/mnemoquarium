@@ -468,8 +468,8 @@ export const HOTKEYS = {
   forward: ["KeyW"], back: ["KeyS"], left: ["KeyA"], right: ["KeyD"],
   up: ["Space"], down: ["KeyC", "ControlLeft"], boost: ["ShiftLeft"],
   lights: ["KeyF"], sonar: ["KeyR"], dock: ["KeyE"], cargo: ["Tab"],
-  weapon1: ["Digit1"], weapon2: ["Digit2"], weapon3: ["Digit3"],
-  pause: ["Escape"], map: ["KeyM"],
+  weapon1: ["Digit1"], weapon2: ["Digit2"], weapon3: ["Digit3"], weapon4: ["Digit4"],
+  cycle: ["KeyQ"], pause: ["Escape"], map: ["KeyM"],
 };
 
 export function zoneForDepth(depth) {
