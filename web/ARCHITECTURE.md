@@ -55,6 +55,9 @@ modules disagree the one that broke this file is wrong.
 | `src/game.js` + `src/main.js` | agent | `Game`; `main.js` has no exports |
 | `src/chart.js` | agent | `Chart` — the sea chart panel (`M`), built from JS |
 | `src/nav.js` | agent | `bearingOf, compassPoint, formatRange, rumourCentre, COMPASS_POINTS, RUMOUR_RADIUS` — no three.js |
+| `src/input.js` | agent | `InputDevices` (gamepad + touch, writes `sub.analog` and `sub.lookDX/DY`), `watchMenuPad` |
+| `src/stick.js` | agent | `shapeStick, shapeAxis, thumbVector, edges, DEADZONE` — no DOM, no three.js |
+| `src/frame.js` | agent | `splitFrame, MAX_DT, MAX_STEPS` — no three.js |
 | `src/quality.js` | agent | `ResolutionGovernor, pixelRatioFor, SCALE, QUALITY_MODES` — no three.js |
 
 ## The `game` object
@@ -87,8 +90,11 @@ game = {
 
 Construction order in `game.js`: `save -> ecology -> world -> vfx -> sub -> fish
 -> creatures -> combat -> audio -> hud`.
-Update order each frame: `sub -> world -> fish -> creatures -> combat -> vfx ->
-audio -> hud`, then `renderer.render(scene, camera)`.
+Update order each frame: `input`, then `splitFrame(raw)` steps of at most
+`MAX_DT` each running `sub -> fish -> creatures -> combat`, then once per frame
+`world -> sky -> landmarks -> water -> vfx -> audio -> hud -> chart`, then the
+render. A frame slower than `MAX_DT` is simulated in several steps rather than
+clamped, so a slow machine plays in real time instead of slow motion.
 
 ## Shared data shapes
 

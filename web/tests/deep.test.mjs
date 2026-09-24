@@ -17,6 +17,8 @@ const save = await import("../src/save.js");
 const { ZONES, UPGRADES, CREATURES, RARITY, WEAPONS, HOTKEYS, zoneForDepth } = await import("../src/config.js");
 const quality = await import("../src/quality.js");
 const nav = await import("../src/nav.js");
+const stick = await import("../src/stick.js");
+const frame = await import("../src/frame.js");
 
 const PHRASE = "forgotten kiosk under neon rain";
 
@@ -304,4 +306,47 @@ test("a rumour is fixed, vague, and always contains the place", () => {
     assert.ok(off < a.radius, "the truth is inside the circle");
     assert.ok(off > 20, "but not at its centre");
   }
+});
+
+test("a stick has a radial deadzone and no jump at its edge", () => {
+  assert.deepEqual(stick.shapeStick(0.1, 0.1), [0, 0], "resting drift is ignored");
+  const [x0] = stick.shapeStick(stick.DEADZONE + 0.001, 0);
+  assert.ok(x0 > 0 && x0 < 0.01, "just past the deadzone is just past zero");
+  const [x1, y1] = stick.shapeStick(1, 0);
+  assert.ok(Math.abs(x1 - 1) < 1e-9 && y1 === 0, "full throw is full");
+  const [dx, dy] = stick.shapeStick(0.5, 0.5);
+  assert.ok(Math.abs(dx - dy) < 1e-12, "a diagonal stays a diagonal");
+  const [hx] = stick.shapeStick(0.55, 0);
+  assert.ok(hx < 0.45, "the first half of the throw is for aiming");
+  assert.equal(stick.shapeAxis(0.05), 0);
+  assert.equal(stick.shapeAxis(-1), -1);
+});
+
+test("the touch joystick caps at the rim and boosts past it", () => {
+  const rest = stick.thumbVector(2, 3, 56);
+  assert.deepEqual([rest.x, rest.y], [0, 0]);
+  const full = stick.thumbVector(0, -56, 56);
+  assert.ok(Math.abs(full.y + 1) < 1e-9 && !full.boost);
+  const past = stick.thumbVector(0, -200, 56);
+  assert.ok(Math.abs(past.y + 1) < 1e-9, "past the rim is still full, not more");
+  assert.ok(past.boost, "and asks for boost");
+});
+
+test("button edges see presses and releases, not holds", () => {
+  assert.deepEqual(stick.edges([false, true, true], [true, true, false]), { down: [0], up: [2] });
+  assert.deepEqual(stick.edges([], [false, true]), { down: [1], up: [] });
+});
+
+test("a slow frame is cut into steps instead of slowing the sea down", () => {
+  assert.deepEqual(frame.splitFrame(1 / 60), { steps: 1, dt: 1 / 60 });
+  const twelve = frame.splitFrame(1 / 12);
+  assert.equal(twelve.steps, 2);
+  assert.ok(Math.abs(twelve.steps * twelve.dt - 1 / 12) < 1e-12, "all of the frame is simulated");
+  assert.ok(twelve.dt <= frame.MAX_DT + 1e-12, "and no step is longer than the limit");
+  const hitch = frame.splitFrame(3);
+  assert.equal(hitch.steps, frame.MAX_STEPS, "a hitch is capped, not replayed");
+  assert.ok(Math.abs(hitch.dt - frame.MAX_DT) < 1e-12);
+  assert.deepEqual(frame.splitFrame(0), { steps: 1, dt: 0 });
+  assert.deepEqual(frame.splitFrame(NaN), { steps: 1, dt: 0 });
+  assert.equal(frame.splitFrame(frame.MAX_DT).steps, 1, "exactly the limit is one step");
 });

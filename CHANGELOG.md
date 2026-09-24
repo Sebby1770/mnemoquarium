@@ -23,6 +23,27 @@ All notable changes to **mnemoquarium** are documented here.
   if you would rather.
 - `Q` and the mouse wheel step through the weapon rack, skipping anything the
   drydock has not fitted.
+- **Gamepads.** Standard mapping: sticks fly and look (radial deadzone, curved
+  response), triggers fire and hold the beam, face buttons rise, dive, ping
+  and switch the lamps, bumpers step through the rack, `Back` opens the chart,
+  `Start` pauses. `A`/`Start` press each panel's primary button, including Dive
+  on the menu, so a whole run works from the sofa except the shopping.
+- **Touch controls.** The game said it was responsive down to a phone, and it
+  was — you just could not steer. Controls now appear on the first touch: a
+  floating left-thumb joystick (push past the rim to boost), drag-to-look on
+  the right, held `FIRE`/`BEAM`/`▲`/`▼`, and four small buttons for pause,
+  chart, sonar and lamps. The weapon rack, the hold gauge and the dock prompt
+  become pressable instead of spending three more buttons on them. The pointer
+  is never locked for a touch player, because under pointer lock the browser
+  reports every touch at (0, 0). A touchscreen laptop goes back to the mouse
+  the moment the mouse clicks.
+
+### Changed
+- **Slow machines play in real time.** Frame time used to be clamped to
+  1/20 s, so anything under 20 fps ran in slow motion. A slow frame is now cut
+  into up to four steps of at most 1/20 s each: the boat still never moves far
+  enough in one step to go through a wall, and a hitch is still capped rather
+  than replayed.
 
 ### Fixed
 - **Surveyed landmarks were forgotten on reload**, and paid their survey fee
@@ -35,6 +56,7 @@ All notable changes to **mnemoquarium** are documented here.
 - Before the first sonar ping, an empty sonar pill sat on top of the speed
   instrument.
 - Selecting the drift net without one fitted said "no tubes fitted".
+- On narrow screens the objective line sat underneath the stacked zone plate.
 
 ## [1.4.0] - 2026-09-23
 

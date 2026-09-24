@@ -158,6 +158,7 @@ export class Submarine {
     /* ---- input ---------------------------------------------------------- */
     this.inputEnabled = true;
     this.pointerLocked = false;
+    this.touchLook = false;
     this.intentionalUnlock = false;
     this.lookDX = 0;
     this.lookDY = 0;
@@ -165,6 +166,10 @@ export class Submarine {
     this.beaming = false;
     this.keys = Object.create(null);
     for (const action of Object.keys(HOTKEYS)) this.keys[action] = false;
+    /* Sticks and thumbs. input.js writes these every frame (-1..1, plus two
+       held buttons); they add to the keys rather than replacing them, so a
+       keyboard and a pad can share the boat. */
+    this.analog = { forward: 0, strafe: 0, vert: 0, boost: false, dock: false };
 
     this.disposables = [];
     this.buildLights();
@@ -508,6 +513,9 @@ export class Submarine {
 
   requestLook() {
     if (!this.inputEnabled || this.game.mode !== "dive") return;
+    // A thumb steers by dragging, and under pointer lock the browser reports
+    // every touch at (0, 0) — so a touch player never gets the pointer locked.
+    if (this.touchLook) return;
     if (!this.canvas || this.pointerLocked) return;
     if (typeof this.canvas.requestPointerLock !== "function") return;
     try {
@@ -540,6 +548,8 @@ export class Submarine {
 
   zeroInput() {
     for (const action of Object.keys(this.keys)) this.keys[action] = false;
+    const a = this.analog;
+    a.forward = 0; a.strafe = 0; a.vert = 0; a.boost = false; a.dock = false;
     this.lookDX = 0;
     this.lookDY = 0;
     this.dockHold = 0;
@@ -861,7 +871,7 @@ export class Submarine {
        mouse delta, so a smoothed rate never fights the pointer. */
     const instant = dt > 0 ? wrapAngle(this.yaw - prevYaw) / dt : 0;
     this.yawRate = damp(this.yawRate, instant, 9, dt);
-    const strafe = (this.keys.right ? 1 : 0) - (this.keys.left ? 1 : 0);
+    const strafe = clamp((this.keys.right ? 1 : 0) - (this.keys.left ? 1 : 0) + this.analog.strafe, -1, 1);
     const rollTarget = clamp(
       -this.yawRate * TURN_ROLL * SUB.rollAssist - strafe * 0.1,
       -ROLL_MAX,
@@ -910,12 +920,13 @@ export class Submarine {
 
   applyThrust(dt) {
     const s = this.stats;
-    const fwdIn = (this.keys.forward ? 1 : 0) - (this.keys.back ? 1 : 0);
-    const strafeIn = (this.keys.right ? 1 : 0) - (this.keys.left ? 1 : 0);
-    const vertIn = (this.keys.up ? 1 : 0) - (this.keys.down ? 1 : 0);
+    const a = this.analog;
+    const fwdIn = clamp((this.keys.forward ? 1 : 0) - (this.keys.back ? 1 : 0) + a.forward, -1, 1);
+    const strafeIn = clamp((this.keys.right ? 1 : 0) - (this.keys.left ? 1 : 0) + a.strafe, -1, 1);
+    const vertIn = clamp((this.keys.up ? 1 : 0) - (this.keys.down ? 1 : 0) + a.vert, -1, 1);
 
     /* Boost only while the cell can pay for it. */
-    const wantsBoost = this.keys.boost && (fwdIn !== 0 || strafeIn !== 0 || vertIn !== 0);
+    const wantsBoost = (this.keys.boost || a.boost) && (fwdIn !== 0 || strafeIn !== 0 || vertIn !== 0);
     this.boosting = wantsBoost && this.battery > 0.5;
 
     const q = this.object.quaternion;
@@ -1058,7 +1069,7 @@ export class Submarine {
 
   updateDockPrompt(dt) {
     const world = this.game.world;
-    if (!world || !this.keys.dock) {
+    if (!world || !(this.keys.dock || this.analog.dock)) {
       this.dockHold = 0;
       return;
     }

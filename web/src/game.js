@@ -24,8 +24,9 @@ import { PostFX } from "./post.js";
 import { HUD } from "./hud.js";
 import { Chart } from "./chart.js";
 import { ResolutionGovernor, pixelRatioFor } from "./quality.js";
+import { InputDevices } from "./input.js";
+import { splitFrame } from "./frame.js";
 
-const MAX_DT = 1 / 20;         // a long frame must not teleport the boat
 const SAVE_INTERVAL = 4;       // seconds between debounced writes
 
 const _worldEye = new THREE.Vector3();
@@ -99,6 +100,7 @@ export class Game {
     this.audio = new Audio(this);
     this.hud = new HUD(this);
     this.chart = new Chart(this);
+    this.input = new InputDevices(this);
 
     /* Patch everything already in the scene, then keep patching as creatures
        arrive. register() is idempotent, so spawning is cheap. */
@@ -196,29 +198,18 @@ export class Game {
 
   frame() {
     const raw = this.clock.getDelta();
-    const dt = Math.min(MAX_DT, raw);
-    this.dt = dt;
-
     // Only a frame that draws the sea at full cost says anything about the GPU.
     if (this.mode === "dive" && this.governor.sample(raw) !== null) this.resize();
 
-    const live = this.mode === "dive" || this.mode === "station";
-    if (live) this.elapsed += dt;
+    const { steps, dt: step } = splitFrame(raw);
+    const dt = step * steps;
+    this.dt = step;
 
-    // The world keeps breathing while a panel is open — a frozen sea behind
-    // the drydock would make the station feel like a different program.
-    this.sub.update(live ? dt : 0);
+    this.input.update(dt);
+    for (let i = 0; i < steps; i += 1) this.simulate(step);
+    // The world streams terrain and scenery around the eye; once a frame will do.
     this.world.update(dt, this.camera.getWorldPosition(_worldEye));
     this.sky.update(dt, _worldEye);
-    if (this.mode === "dive") {
-      this.fish.update(dt);
-      this.creatures.update(dt);
-      this.combat.update(dt);
-    } else {
-      this.fish.update(dt * 0.35);
-      this.creatures.update(dt * 0.2);
-      this.combat.update(dt);
-    }
     this.landmarks.update(dt);
     this.water.update(dt);
     this.vfx.update(dt);
@@ -240,6 +231,25 @@ export class Game {
       }
     } else {
       this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  /* One fixed-ish step of everything that moves. */
+  simulate(dt) {
+    const live = this.mode === "dive" || this.mode === "station";
+    if (live) this.elapsed += dt;
+
+    // The world keeps breathing while a panel is open — a frozen sea behind
+    // the drydock would make the station feel like a different program.
+    this.sub.update(live ? dt : 0);
+    if (this.mode === "dive") {
+      this.fish.update(dt);
+      this.creatures.update(dt);
+      this.combat.update(dt);
+    } else {
+      this.fish.update(dt * 0.35);
+      this.creatures.update(dt * 0.2);
+      this.combat.update(dt);
     }
   }
 
@@ -537,7 +547,7 @@ export class Game {
     document.removeEventListener("visibilitychange", this._onVisibility);
     window.removeEventListener("pagehide", this._onUnload);
 
-    for (const system of [this.chart, this.hud, this.audio, this.combat, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
+    for (const system of [this.input, this.chart, this.hud, this.audio, this.combat, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
       try {
         if (system && system.dispose) system.dispose();
       } catch (err) {

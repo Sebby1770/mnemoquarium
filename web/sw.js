@@ -1,7 +1,7 @@
 /* Offline shell for the game. Bump CACHE when the shell files change.
    three.js is large, so it is cached on first visit and never re-fetched
    unless the version in the URL changes. */
-const CACHE = "mnemoquarium-deep-v1.6.0";
+const CACHE = "mnemoquarium-deep-v1.6.1";
 const SHELL = [
   "./",
   "./index.html",
@@ -35,6 +35,9 @@ const SHELL = [
   "./src/nav.js",
   "./src/quality.js",
   "./src/chart.js",
+  "./src/stick.js",
+  "./src/input.js",
+  "./src/frame.js",
 ];
 
 self.addEventListener("install", (event) => {

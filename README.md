@@ -35,6 +35,20 @@ the bottom of the menu takes any phrase you like.
 | `Tab` | look in the hold |
 | `Esc` | pause |
 
+**With a controller.** Left stick thrusts, right stick looks, `RT` fires, `LT`
+holds the capture beam, `A` / `B` rise and dive, `LB` / `RB` step through the
+rack, `X` pings, `Y` switches the lamps, click the left stick to boost, d-pad up
+to dock, d-pad down to look in the hold, `Back` for the chart and `Start` to
+pause. `A` or `Start` presses the obvious button on every panel — dive, resume,
+undock, wake up — so a run can start and end without touching the mouse;
+buying things in the drydock still wants a pointer.
+
+**On a phone or tablet.** Controls appear on the first touch. Drag anywhere on
+the left to steer (push past the rim to boost), drag on the right to look, and
+hold `FIRE`, `BEAM`, `▲` and `▼` on the right. Tap a weapon in the rack to pick
+it, tap the hold gauge to look in the hold, and press and hold the dock prompt
+at the Hull. Landscape plays best.
+
 **The surface.** Keep rising and the tower breaks through into air: a sky,
 a swell that rocks the boat, and a diesel that charges the cell for free while
 you sit up there. From underneath, the surface is a bright window of sky
@@ -161,6 +175,8 @@ python3 -m http.server 8765 --directory web
 - `web/src/chart.js` — the sea chart
 - `web/src/nav.js` — bearings, ranges, rumours (shared by the compass and the chart)
 - `web/src/quality.js` — the resolution governor
+- `web/src/input.js` — gamepads and touch; `web/src/stick.js` — their arithmetic
+- `web/src/frame.js` — how a real frame becomes simulation steps
 - `web/ARCHITECTURE.md` — the contract every module is written against
 
 `web/engine.js` mirrors `src/mnemoquarium/model.py` rule for rule, so the

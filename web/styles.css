@@ -1215,6 +1215,114 @@ body[data-hold="open"] #panel-cargo { display: grid; }
 
 .pulse { animation: gauge-pulse 620ms ease; }
 
+/* --------------------------------------------------------- touch controls */
+
+/* Built by input.js on the first touch. Only there while flying: every panel
+   is a normal page of buttons a thumb can already use. */
+.touch-controls { position: fixed; inset: 0; z-index: 12; display: none; user-select: none; -webkit-user-select: none; }
+body[data-mode="dive"] .touch-controls:not([hidden]) { display: block; }
+.touch-look,
+.touch-stick-zone { position: absolute; touch-action: none; }
+.touch-look { inset: 0; }
+.touch-stick-zone { left: 0; bottom: 0; width: 46vw; height: 62vh; }
+.touch-stick {
+  position: absolute;
+  left: 26%;
+  top: 62%;
+  width: 116px;
+  height: 116px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(126, 214, 232, 0.08), rgba(4, 9, 15, 0.25));
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 160ms ease, border-color 160ms ease;
+}
+.touch-stick.on { opacity: 1; border-color: var(--line-strong); }
+.touch-stick.boost { border-color: var(--amber); box-shadow: 0 0 18px rgba(255, 196, 107, 0.35); }
+.touch-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 50px;
+  height: 50px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(207, 227, 238, 0.28);
+  border: 1px solid rgba(207, 227, 238, 0.5);
+}
+.touch-btn {
+  width: 66px;
+  height: 66px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: rgba(6, 14, 22, 0.58);
+  color: var(--text);
+  font: 600 0.72rem/1 var(--mono);
+  letter-spacing: 0.08em;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.touch-btn.on { background: rgba(126, 214, 232, 0.28); border-color: var(--accent); }
+.touch-fire { border-color: rgba(255, 111, 96, 0.6); }
+.touch-fire.on { background: rgba(255, 111, 96, 0.32); }
+.touch-beam.on { background: rgba(126, 224, 208, 0.36); }
+.touch-actions {
+  position: absolute;
+  right: calc(var(--hud-gap) + env(safe-area-inset-right, 0px));
+  bottom: calc(var(--hud-gap) + 6.4rem);
+  display: grid;
+  grid-template-columns: repeat(2, 66px);
+  gap: 0.6rem;
+}
+.touch-bar {
+  position: absolute;
+  left: calc(var(--hud-gap) + env(safe-area-inset-left, 0px));
+  top: var(--hud-gap);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.touch-small {
+  width: auto;
+  min-width: 58px;
+  height: 44px;
+  padding: 0 0.7rem;
+  border-radius: 10px;
+  font-size: 0.62rem;
+}
+/* Raised over the thumb layer so its three pressable parts can be pressed;
+   everything else on it still lets touches through to the sea. */
+body[data-input="touch"] #hud { z-index: 13; }
+body[data-input="touch"] .weapon,
+body[data-input="touch"] #gauge-cargo,
+body[data-input="touch"] #hint-dock { pointer-events: auto; touch-action: none; }
+body[data-input="touch"] #hint-dock { padding: 0.7rem 1.2rem; border-color: var(--amber); }
+body[data-input="touch"] #hint-dock.on { background: rgba(255, 196, 107, 0.25); }
+/* With a thumb on the glass, the mouse-only lines of the HUD are noise. */
+body[data-input="touch"] #log { display: none; }
+body[data-input="touch"] #sonar-note { display: none; }
+@media (max-height: 520px) {
+  .touch-btn { width: 54px; height: 54px; }
+  .touch-actions { grid-template-columns: repeat(2, 54px); bottom: calc(var(--hud-gap) + 5rem); }
+  .touch-small { height: 36px; min-width: 50px; }
+  .touch-bar { gap: 0.3rem; }
+}
+/* A phone held upright: the top bar stacks, so the buttons start below it,
+   and the weapon rack gets a row of its own above the gauges. */
+@media (max-width: 600px) {
+  .touch-bar { top: calc(var(--hud-gap) + 10rem); }
+  body[data-input="touch"] #weapon-rack {
+    bottom: calc(var(--hud-gap) + 6.4rem);
+    width: calc(100vw - 2 * var(--hud-gap));
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  body[data-input="touch"] .wpn-name { font-size: 0.66rem; }
+  .touch-actions { bottom: calc(var(--hud-gap) + 10rem); }
+}
+
 /* ------------------------------------------------------------ responsive */
 
 @media (max-width: 820px) {
@@ -1224,6 +1332,8 @@ body[data-hold="open"] #panel-cargo { display: grid; }
   #instruments { grid-template-columns: repeat(2, 1fr); }
   #gauges { width: 46vw; }
   #log { display: none; }
+  /* The top bar stacks into a column here, so the objective moves below it. */
+  #objective { top: calc(var(--hud-gap) + 8.4rem); white-space: nowrap; }
   .panel-inner { padding: 1.1rem; }
   .station-foot { flex-direction: column; align-items: stretch; }
 }
