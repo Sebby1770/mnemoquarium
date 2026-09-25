@@ -409,3 +409,117 @@ test("the scrubbers and the lattice are real upgrades with sane stock values", (
     assert.equal(up.costs.length, up.values.length - 1, `${id} has a price for every mark`);
   }
 });
+
+/* A fresh copy of save.js with its own storage, so slot tests do not share
+   the cached store the earlier tests left behind. */
+async function freshSave() {
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+  const mod = await import(`../src/save.js?fresh=${Math.random()}`);
+  return { mod, store };
+}
+
+test("every sea keeps its own save, and a shared link never touches yours", async () => {
+  const { mod } = await freshSave();
+  const mine = mod.newProfile("salt and static", 1);
+  mine.credits = 999;
+  mod.saveProfile(mine);
+  const theirs = mod.newProfile("a friend's sea", 2);
+  theirs.credits = 5;
+  mod.saveProfile(theirs);
+
+  assert.equal(mod.loadSea("salt and static").credits, 999, "mine is still there");
+  assert.equal(mod.loadSea("a friend's sea").credits, 5);
+  assert.equal(mod.loadProfile().phrase, "a friend's sea", "continue means the last one played");
+  assert.deepEqual(mod.listSeas().map((e) => e.phrase).sort(), ["a friend's sea", "salt and static"]);
+  assert.equal(mod.loadSea("never dived"), null);
+
+  mod.clearProfile("a friend's sea");
+  assert.equal(mod.loadSea("a friend's sea"), null, "erasing one sea");
+  assert.equal(mod.loadSea("salt and static").credits, 999, "leaves the others alone");
+  delete globalThis.localStorage;
+});
+
+test("a save from before slots is adopted, not overwritten", async () => {
+  const { mod, store } = await freshSave();
+  store.set(mod.SAVE_KEY, JSON.stringify({ phrase: "old sea", credits: 777, settings: { sound: false } }));
+  mod.saveProfile(mod.newProfile("new sea", 3));
+  assert.equal(mod.loadSea("old sea").credits, 777);
+  assert.ok(mod.listSeas().some((e) => e.phrase === "old sea"));
+  delete globalThis.localStorage;
+});
+
+test("only the most recent seas are kept", async () => {
+  const { mod } = await freshSave();
+  for (let i = 0; i < mod.MAX_SEAS + 4; i += 1) {
+    const p = mod.newProfile(`sea ${i}`, i);
+    mod.saveProfile(p);
+  }
+  assert.equal(mod.listSeas().length, mod.MAX_SEAS);
+  delete globalThis.localStorage;
+});
+
+test("sound is on unless the player turned it off", () => {
+  assert.equal(save.newProfile(PHRASE, 1).settings.sound, true);
+  assert.equal(save.migrate({ phrase: PHRASE, settings: { sound: false } }).settings.sound, true, "an old default is not a choice");
+  assert.equal(save.migrate({ phrase: PHRASE, settings: { sound: false, soundSet: true } }).settings.sound, false, "a choice is kept");
+});
+
+test("today's sea is the same all day, different tomorrow, and reads as words", async () => {
+  const daily = await import("../src/daily.js");
+  const morning = new Date(Date.UTC(2026, 8, 25, 1));
+  const night = new Date(Date.UTC(2026, 8, 25, 23));
+  const tomorrow = new Date(Date.UTC(2026, 8, 26, 1));
+  assert.equal(daily.dayKey(morning), "2026-09-25");
+  assert.equal(daily.dailyPhrase(morning), daily.dailyPhrase(night));
+  assert.notEqual(daily.dailyPhrase(morning), daily.dailyPhrase(tomorrow));
+  assert.match(daily.dailyPhrase(morning), /^[a-z]+ [a-z]+ [a-z]+ [a-z]+ [a-z]+$/);
+  const seen = new Set();
+  for (let d = 0; d < 30; d += 1) seen.add(daily.dailyPhrase(new Date(Date.UTC(2026, 0, 1 + d))));
+  assert.ok(seen.size >= 28, "a month of seas barely repeats");
+});
+
+test("a sea link carries the phrase and nothing else", async () => {
+  const share = await import("../src/share.js");
+  const link = share.seaLink("my cat & the sea", "https://example.org/game/?old=1#x");
+  assert.equal(link, "https://example.org/game/?phrase=my+cat+%26+the+sea");
+  assert.equal(new URL(link).searchParams.get("phrase"), "my cat & the sea");
+  assert.match(share.shareText("salt", "120 m down"), /salt.*120 m down/);
+});
+
+test("analytics stay off unless configured, and respect Do Not Track", async () => {
+  const a = await import("../src/analytics.js");
+  const on = { endpoint: "https://x.goatcounter.com/count", dnt: null, host: "sebby1770.github.io" };
+  assert.equal(a.shouldTrack(on), true);
+  assert.equal(a.shouldTrack({ ...on, endpoint: "" }), false, "off by default");
+  assert.equal(a.shouldTrack({ ...on, dnt: "1" }), false);
+  assert.equal(a.shouldTrack({ ...on, host: "localhost" }), false);
+  const url = new URL(a.eventUrl(on.endpoint, "dive"));
+  assert.equal(url.searchParams.get("p"), "dive");
+  assert.equal(url.searchParams.get("e"), "true");
+});
+
+test("a photo is captioned with its phrase and where to grow your own", async () => {
+  const photo = await import("../src/photo.js");
+  const cap = photo.captionFor({ phrase: "salt", depth: 312.4, zone: "Twilight Drift" });
+  assert.equal(cap.title, "“salt”");
+  assert.match(cap.detail, /312 m · Twilight Drift/);
+  assert.match(cap.invite, /sebby1770\.github\.io\/mnemoquarium/);
+  assert.match(photo.captionFor({ phrase: "salt", aboard: true }).detail, /aboard the Hull/);
+});
+
+test("the boat is pushed out of the station, not through it", () => {
+  const capsule = { kind: "capsule", ax: 0, ay: 0, az: 0, bx: 10, by: 0, bz: 0, r: 3 };
+  assert.equal(walk.stationPush(capsule, 5, 8, 0, 1), null, "clear of it");
+  const [nx, ny, , depth] = walk.stationPush(capsule, 5, 3.5, 0, 1);
+  assert.ok(Math.abs(ny - 1) < 1e-9 && Math.abs(nx) < 1e-9, "straight out, sideways to the axis");
+  assert.ok(Math.abs(depth - 0.5) < 1e-9);
+  const box = { kind: "box", minX: -1, maxX: 1, minY: -1, maxY: 1, minZ: -1, maxZ: 1 };
+  const inside = walk.stationPush(box, 0.9, 0, 0, 0.5);
+  assert.deepEqual(inside.slice(0, 3), [1, 0, 0], "from inside, out the nearest face");
+  assert.ok(Math.abs(inside[3] - 0.6) < 1e-9);
+});

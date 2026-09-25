@@ -37,6 +37,9 @@ export function buildSubModel(upgrades) {
   const mats = [];
   const mat = (opts) => {
     const m = new THREE.MeshStandardMaterial(opts);
+    // The room's reflections are bright work lamps; at full strength they
+    // glaze the paint white.
+    m.envMapIntensity = 0.4;
     mats.push(m);
     return m;
   };

@@ -13,6 +13,7 @@
 import * as THREE from "three";
 import { SCENERY, SEA, ZONES, zoneForDepth } from "./config.js";
 import { mergeGeometries, weldVertices } from "./geo.js";
+import { stationPush } from "./walk.js";
 import {
   TAU,
   clamp,
@@ -224,6 +225,27 @@ function paintByHeight(geo, lowHex, highHex, jitter = 0) {
 /* Concatenate geometries into one buffer. three's merge helper lives in the
    addons, which are not vendored, so this is the hand-rolled version: position,
    normal and colour only, always non-indexed. */
+/* The station's name, painted on the hub band. */
+function makeSignTexture() {
+  const c = document.createElement("canvas");
+  c.width = 1024;
+  c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "#e0a02c";
+  g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = "#1b1d1f";
+  g.font = "700 76px ui-monospace, Menlo, Consolas, monospace";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText("THE HULL  ·  H-01", c.width / 2, c.height / 2 + 4);
+  g.fillRect(0, 6, c.width, 6);
+  g.fillRect(0, c.height - 12, c.width, 6);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
 function mergeGeos(list) {
   const parts = [];
   let total = 0;
@@ -1918,111 +1940,230 @@ export class SeaWorld {
 
   /* ---------------------------------------------------------- the station */
 
+  /* The Hull from outside: a seabed station, not a capsule.
+   *
+   * A painted central hub with a glass observation dome, three habitat
+   * modules on short connecting tubes, lit portholes, a docking bay under the
+   * hub with its door lit and guide lights running out to the ring, legs down
+   * to footings on the floor, a beacon mast, running lights, and an umbilical
+   * cable climbing to a buoy on the surface.
+   *
+   * Everything is painted rather than bare metal: metal under water has
+   * nothing to reflect and renders black, which is what the old hull did.
+   * Parts are merged per material, so the whole station is about fifteen
+   * draw calls. Local y is up and the origin is SEA.stationPos. */
   _buildStation() {
     const root = new THREE.Group();
     root.name = "hull-station";
     root.position.copy(this.stationPosition);
+    const S = this.stationPosition;
+    const rng = makeRng(this.seed, "station");
 
-    const shell = this._mat(new THREE.MeshStandardMaterial({
-      color: 0x4a5258,
-      roughness: 0.62,
-      metalness: 0.55,
-      fog: true,
-    }));
-    const trim = this._mat(new THREE.MeshStandardMaterial({
-      color: 0x2a3036,
-      roughness: 0.8,
-      metalness: 0.3,
-      fog: true,
-    }));
+    const paint = this._mat(new THREE.MeshStandardMaterial({ color: 0xd9d4c8, roughness: 0.58, metalness: 0.08 }));
+    const accent = this._mat(new THREE.MeshStandardMaterial({ color: 0xe0a02c, roughness: 0.5, metalness: 0.1 }));
+    const trim = this._mat(new THREE.MeshStandardMaterial({ color: 0x4a545c, roughness: 0.62, metalness: 0.2 }));
     const warm = this._mat(new THREE.MeshStandardMaterial({
-      color: 0x120d07,
-      emissive: 0xffb765,
-      emissiveIntensity: 2.4,
-      roughness: 0.4,
-      metalness: 0,
-      fog: true,
+      color: 0x120d07, emissive: 0xffb765, emissiveIntensity: 2.2, roughness: 0.4, metalness: 0,
     }));
+    const unlit = this._mat(new THREE.MeshStandardMaterial({ color: 0x0c1418, roughness: 0.2, metalness: 0.1 }));
+    const glass = this._mat(new THREE.MeshStandardMaterial({
+      color: 0x86cfdc, roughness: 0.08, metalness: 0.0, transparent: true, opacity: 0.32,
+      emissive: 0x1f5864, emissiveIntensity: 0.35, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    const lounge = this._mat(new THREE.MeshStandardMaterial({ color: 0x1a120a, emissive: 0xffcf8a, emissiveIntensity: 0.9, roughness: 0.8 }));
+    const bayGlow = this._mat(new THREE.MeshStandardMaterial({ color: 0x0a1216, emissive: 0xb8e2ee, emissiveIntensity: 0.75, roughness: 0.6 }));
 
-    /* Body: a pressure hull lying along Z, so the docking ring faces the way
-       you naturally fly in from the shelf. */
-    const body = new THREE.Mesh(this._geo(new THREE.CapsuleGeometry(7, 20, 6, 18)), shell);
-    body.rotation.x = Math.PI / 2;
-    root.add(body);
+    const buckets = new Map([[paint, []], [accent, []], [trim, []], [warm, []], [unlit, []], [lounge, []], [bayGlow, []]]);
+    const _m = new THREE.Matrix4();
+    const _q = new THREE.Quaternion();
+    const _e = new THREE.Euler();
+    const _p = new THREE.Vector3();
+    const _one = new THREE.Vector3(1, 1, 1);
+    const put = (material, geo, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => {
+      _e.set(rx, ry, rz);
+      _q.setFromEuler(_e);
+      _m.compose(_p.set(x, y, z), _q, _one);
+      geo.applyMatrix4(_m);
+      buckets.get(material).push(geo);
+      return geo;
+    };
 
-    const collarGeo = this._geo(new THREE.TorusGeometry(7.3, 0.7, 6, 22));
-    for (const z of [-8, -2, 4]) {
-      const collar = new THREE.Mesh(collarGeo, trim);
-      collar.position.z = z;
-      root.add(collar);
+    /* ---- hub, dome, mast ------------------------------------------------ */
+    put(paint, new THREE.CylinderGeometry(7.5, 7.5, 11, 40), 0, 0, 0);
+    put(accent, new THREE.CylinderGeometry(7.58, 7.58, 1.5, 40, 1, true), 0, 3.6, 0);
+    for (const y of [-5.4, 5.45]) put(trim, new THREE.TorusGeometry(7.6, 0.34, 6, 40), 0, y, 0, Math.PI / 2);
+    for (let i = 0; i < 16; i += 1) {
+      const a = (i / 16) * TAU;
+      put(rng.random() < 0.82 ? warm : unlit, new THREE.BoxGeometry(1.25, 1.7, 0.25), Math.sin(a) * 7.52, 0.2, Math.cos(a) * 7.52, 0, a);
+    }
+    // The dome, a lit lounge floor under it, and ribs over it.
+    const dome = new THREE.Mesh(this._geo(new THREE.SphereGeometry(7.2, 32, 12, 0, TAU, 0, Math.PI / 2)), glass);
+    dome.position.y = 5.5;
+    dome.renderOrder = 3;
+    root.add(dome);
+    put(lounge, new THREE.CircleGeometry(7.1, 32), 0, 5.6, 0, -Math.PI / 2);
+    for (let i = 0; i < 4; i += 1) put(trim, new THREE.TorusGeometry(7.25, 0.14, 4, 32, Math.PI), 0, 5.5, 0, 0, (i / 4) * Math.PI);
+    put(trim, new THREE.CylinderGeometry(0.22, 0.3, 8, 8), 0, 16.7, 0);
+    for (const y of [15, 18]) put(trim, new THREE.BoxGeometry(2.4, 0.12, 0.12), 0, y, 0, 0, y * 0.3);
+
+    /* Name on the band, facing the bay side you arrive from. */
+    const signTex = makeSignTexture();
+    this._track(signTex, this._textures);
+    const signMat = this._mat(new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.55, emissive: 0xffffff, emissiveMap: signTex, emissiveIntensity: 0.25 }));
+    const sign = new THREE.Mesh(this._geo(new THREE.CylinderGeometry(7.62, 7.62, 1.3, 24, 1, true, -0.75, 1.5)), signMat);
+    sign.position.y = 3.6;
+    root.add(sign);
+
+    /* ---- habitat modules ---------------------------------------------- */
+    const modules = [
+      { a: Math.PI, dome: false },        // west
+      { a: 0, dome: false },              // east
+      { a: -Math.PI / 2, dome: true },    // north, ends in the observation dome
+    ];
+    this.stationColliders = [
+      { kind: "capsule", ax: 0, ay: -5, az: 0, bx: 0, by: 5.5, bz: 0, r: 7.7 },
+    ];
+    const navSpots = [];
+    for (const mod of modules) {
+      const dx = Math.cos(mod.a);
+      const dz = Math.sin(mod.a);
+      const sx = -dz;                  // horizontal side normal
+      const sz = dx;
+      const yaw = Math.atan2(dx, dz);  // rotates +Z onto the module axis
+      const cx = dx * 16;
+      const cz = dz * 16;
+      const cy = -1;
+      const body = new THREE.CylinderGeometry(3.4, 3.4, 14, 28);
+      body.rotateX(Math.PI / 2);
+      put(paint, body, cx, cy, cz, 0, yaw);
+      const tubeGeo = new THREE.CylinderGeometry(2, 2, 3.2, 20);
+      tubeGeo.rotateX(Math.PI / 2);
+      put(trim, tubeGeo, dx * 9, cy, dz * 9, 0, yaw);
+      put(paint, new THREE.SphereGeometry(3.4, 20, 12), cx - dx * 7, cy, cz - dz * 7);
+      if (mod.dome) {
+        const obs = new THREE.Mesh(this._geo(new THREE.SphereGeometry(3.45, 24, 14, 0, TAU, 0, Math.PI / 2)), glass);
+        obs.position.set(cx + dx * 7, cy, cz + dz * 7);
+        obs.rotation.set(Math.PI / 2, 0, 0);
+        obs.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, 0, dz));
+        obs.renderOrder = 3;
+        root.add(obs);
+        const floor = new THREE.CircleGeometry(3.3, 20);
+        floor.rotateX(-Math.PI / 2);
+        put(lounge, floor, cx + dx * 7.6, cy - 1.6, cz + dz * 7.6);
+      } else {
+        put(paint, new THREE.SphereGeometry(3.4, 20, 12), cx + dx * 7, cy, cz + dz * 7);
+        navSpots.push({ x: cx + dx * 10.2, y: cy + 0.6, z: cz + dz * 10.2, colour: mod.a === 0 ? 0x5dff8a : 0xff4a3a });
+      }
+      // Frames round the module, a stripe along the top, and portholes.
+      for (let k = -2; k <= 2; k += 1) {
+        const f = new THREE.TorusGeometry(3.5, 0.17, 6, 28);
+        put(trim, f, cx + dx * k * 3.2, cy, cz + dz * k * 3.2, 0, yaw);
+      }
+      const stripe = new THREE.BoxGeometry(0.5, 0.12, 13.4);
+      put(accent, stripe, cx, cy + 3.41, cz, 0, yaw);
+      for (let k = -2; k <= 2; k += 1) {
+        for (const side of [-1, 1]) {
+          const px = cx + dx * (k * 3.2 + 1.6) + sx * side * 3.42;
+          const pz = cz + dz * (k * 3.2 + 1.6) + sz * side * 3.42;
+          if (k === 2) continue;
+          put(rng.random() < 0.78 ? warm : unlit, new THREE.CircleGeometry(0.55, 14), px, cy + 0.3, pz, 0, Math.atan2(sx * side, sz * side));
+        }
+      }
+      this.stationColliders.push({
+        kind: "capsule",
+        ax: cx - dx * 7, ay: cy, az: cz - dz * 7,
+        bx: cx + dx * 7, by: cy, bz: cz + dz * 7,
+        r: 3.6,
+      });
     }
 
-    /* Docking ring — the thing you aim at. */
-    const ring = new THREE.Mesh(this._geo(new THREE.TorusGeometry(12, 1.6, 8, 30)), shell);
-    ring.position.z = 17;
-    root.add(ring);
+    /* ---- the docking bay, under the hub, door facing +Z ----------------- */
+    put(paint, new THREE.BoxGeometry(14, 7, 20), 0, -9, 4);
+    put(accent, new THREE.BoxGeometry(14.1, 0.6, 20.1), 0, -5.7, 4);
+    put(bayGlow, new THREE.PlaneGeometry(9, 4.6), 0, -9.3, 14.06);
+    // Door frame: a dark lip, then hazard blocks round it.
+    put(trim, new THREE.BoxGeometry(10, 0.5, 0.6), 0, -6.8, 14.2);
+    put(trim, new THREE.BoxGeometry(10, 0.5, 0.6), 0, -11.8, 14.2);
+    put(trim, new THREE.BoxGeometry(0.5, 5.4, 0.6), -4.75, -9.3, 14.2);
+    put(trim, new THREE.BoxGeometry(0.5, 5.4, 0.6), 4.75, -9.3, 14.2);
+    for (let i = 0; i < 10; i += 1) {
+      const x = -5.4 + i * 1.2;
+      put(i % 2 ? accent : trim, new THREE.BoxGeometry(1.2, 0.5, 0.3), x, -6.3, 14.25);
+    }
+    this.stationColliders.push({ kind: "box", minX: -7.2, maxX: 7.2, minY: -12.7, maxY: -5.3, minZ: -6.2, maxZ: 14.3 });
 
+    // Guide rails out to the ring, with lights that chase inward.
+    const guideA = this._mat(new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 1 }));
+    const guideB = this._mat(new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 1 }));
+    const guideGeosA = [];
+    const guideGeosB = [];
+    for (const x of [-5.6, 5.6]) {
+      // Painted, not bare: from the boat these run along the bottom of the glass.
+      put(accent, new THREE.BoxGeometry(0.45, 0.45, 26), x, -12.4, 27);
+      for (let k = 0; k < 7; k += 1) {
+        const g = new THREE.SphereGeometry(0.32, 8, 6);
+        g.translate(x, -11.9, 16 + k * 4);
+        (k % 2 ? guideGeosB : guideGeosA).push(g);
+      }
+    }
+    root.add(new THREE.Mesh(this._geo(mergeGeos(guideGeosA)), guideA));
+    root.add(new THREE.Mesh(this._geo(mergeGeos(guideGeosB)), guideB));
+    this.guideMaterials = [guideA, guideB];
+
+    /* Docking ring — the thing you aim at, in front of the bay door. */
+    put(accent, new THREE.TorusGeometry(6.8, 0.75, 8, 36), 0, -9.3, 30);
     this.ringGlowMaterial = this._mat(new THREE.MeshBasicMaterial({
       color: 0x7fe6ff,
       transparent: true,
       opacity: 0.5,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
-      fog: true,
     }));
-    const ringGlow = new THREE.Mesh(this._geo(new THREE.TorusGeometry(12, 2.6, 6, 30)), this.ringGlowMaterial);
-    ringGlow.position.z = 17;
+    const ringGlow = new THREE.Mesh(this._geo(new THREE.TorusGeometry(6.8, 1.05, 6, 36)), this.ringGlowMaterial);
+    ringGlow.position.set(0, -9.3, 30);
     ringGlow.renderOrder = 2;
     root.add(ringGlow);
     this.ringGlow = ringGlow;
 
-    /* Windows: two rows of warm portholes, merged into one draw. */
-    const ports = [];
-    for (let i = 0; i < 7; i += 1) {
-      const z = -9 + i * 3.1;
-      for (const side of [-1, 1]) {
-        const disc = new THREE.CircleGeometry(0.78, 10);
-        disc.rotateY(side * Math.PI * 0.5);
-        disc.translate(side * 6.95, randRange(makeRng(this.seed, "port", i, side), -1.4, 1.4), z);
-        ports.push(disc);
-      }
-    }
-    const portGeo = this._geo(mergeGeos(ports));
-    const windows = new THREE.Mesh(portGeo, warm);
-    root.add(windows);
-
-    /* Legs down to whatever floor is actually under us. */
-    const legGeo = this._geo(new THREE.CylinderGeometry(0.5, 0.8, 1, 6, 1, true));
-    for (let i = 0; i < 4; i += 1) {
-      const a = (i / 4) * TAU + Math.PI / 4;
-      const lx = Math.cos(a) * 8.5;
-      const lz = Math.sin(a) * 10.5;
-      const floor = this.heightAt(this.stationPosition.x + lx, this.stationPosition.z + lz);
-      const len = Math.max(2, this.stationPosition.y - 4 - floor);
-      const leg = new THREE.Mesh(legGeo, trim);
-      leg.position.set(lx, -4 - len / 2, lz);
-      leg.scale.set(1, len, 1);
-      leg.rotation.x = lz * 0.008;
-      leg.rotation.z = -lx * 0.008;
-      root.add(leg);
+    /* ---- legs down to footings --------------------------------------- */
+    const legTops = [
+      [-6.2, -12.6, 12.5], [6.2, -12.6, 12.5], [-6.2, -12.6, -4.5], [6.2, -12.6, -4.5],
+      [-20, -4.2, 0], [20, -4.2, 0], [0, -4.2, -20],
+    ];
+    for (const [lx, top, lz] of legTops) {
+      const floorY = this.heightAt(S.x + lx, S.z + lz) - S.y;
+      const len = top - floorY;
+      if (len < 0.8) continue;
+      put(trim, new THREE.CylinderGeometry(0.45, 0.6, len, 8), lx, floorY + len / 2, lz);
+      put(trim, new THREE.CylinderGeometry(1.6, 1.9, 0.7, 12), lx, floorY + 0.3, lz);
+      if (len > 6) put(accent, new THREE.CylinderGeometry(0.62, 0.62, 0.5, 8), lx, top - 1.2, lz);
     }
 
-    /* Beacon mast. The sprite ignores fog on purpose — it is the one light in
-       this sea that is supposed to find you before you find it. */
-    const mast = new THREE.Mesh(this._geo(new THREE.CylinderGeometry(0.4, 0.6, 14, 6, 1, true)), trim);
-    mast.position.y = 11;
-    root.add(mast);
+    /* ---- the umbilical to the surface, and its buoy -------------------- */
+    const cable = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0.6, 20, 0.4),
+      new THREE.Vector3(3, 24, -1),
+      new THREE.Vector3(7, 28, -3.5),
+      new THREE.Vector3(9.5, 30.2, -5),
+    ]), 40, 0.16, 5, false);
+    put(trim, cable);
+    put(accent, new THREE.SphereGeometry(1.1, 14, 10), 9.5, 30.1, -5);
+    put(trim, new THREE.CylinderGeometry(0.08, 0.08, 1.6, 6), 9.5, 31.4, -5);
 
-    this.beaconMaterial = this._mat(new THREE.MeshBasicMaterial({
-      color: 0xffd9a0,
-      transparent: true,
-      opacity: 0.95,
-      fog: true,
-    }));
-    this.beacon = new THREE.Mesh(this._geo(new THREE.SphereGeometry(1.1, 10, 8)), this.beaconMaterial);
-    this.beacon.position.y = 18.4;
+    /* One mesh per material. */
+    for (const [material, list] of buckets) {
+      if (!list.length) continue;
+      const mesh = new THREE.Mesh(this._geo(mergeGeos(list)), material);
+      root.add(mesh);
+    }
+
+    /* ---- lights you can see from far off ----------------------------- */
+    this.beaconMaterial = this._mat(new THREE.MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.95 }));
+    this.beacon = new THREE.Mesh(this._geo(new THREE.SphereGeometry(0.9, 10, 8)), this.beaconMaterial);
+    this.beacon.position.y = 21.2;
     root.add(this.beacon);
-
+    // The sprite ignores fog on purpose — the one light in this sea that is
+    // supposed to find you before you find it.
     this.beaconSpriteMaterial = this._mat(new THREE.SpriteMaterial({
       map: this.glowTexture,
       color: 0xffc98a,
@@ -2034,17 +2175,34 @@ export class SeaWorld {
       sizeAttenuation: true,
     }));
     this.beaconSprite = new THREE.Sprite(this.beaconSpriteMaterial);
-    this.beaconSprite.position.y = 18.4;
+    this.beaconSprite.position.y = 21.2;
     this.beaconSprite.scale.set(22, 22, 1);
     this.beaconSprite.renderOrder = 6;
     root.add(this.beaconSprite);
 
-    /* Floodlights: one real lamp for the warmth, three additive cones for the
-       beams. Three spotlights would look the same and cost ten times as much. */
+    // Running lights: red to the west, green to the east, white strobes on the bay.
+    navSpots.push({ x: -7.1, y: -5.6, z: 14.3, colour: 0xffffff, strobe: true });
+    navSpots.push({ x: 7.1, y: -5.6, z: 14.3, colour: 0xffffff, strobe: true });
+    this.navLights = [];
+    for (const spot of navSpots) {
+      const mat = this._mat(new THREE.SpriteMaterial({
+        map: this.glowTexture, color: spot.colour, transparent: true, opacity: 0.9,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      }));
+      const glow = new THREE.Sprite(mat);
+      glow.position.set(spot.x, spot.y, spot.z);
+      glow.scale.setScalar(spot.strobe ? 3.2 : 4.5);
+      glow.renderOrder = 5;
+      root.add(glow);
+      this.navLights.push({ sprite: glow, material: mat, strobe: !!spot.strobe, phase: rng.random() * TAU });
+    }
+
+    /* Real light: warm on the approach, so the paint reads as paint. */
     this.stationLight = new THREE.PointLight(0xffc98a, 600, 130, 1.8);
-    this.stationLight.position.set(0, 2, 6);
+    this.stationLight.position.set(0, -4, 22);
     root.add(this.stationLight);
 
+    /* Flood cones under the modules, the way work lights hang off a rig. */
     this.floodMaterial = this._mat(new THREE.MeshBasicMaterial({
       color: 0xffd7a8,
       transparent: true,
@@ -2052,15 +2210,12 @@ export class SeaWorld {
       depthWrite: false,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
-      fog: true,
     }));
-    const floodGeo = this._geo(new THREE.ConeGeometry(11, 38, 8, 1, true));
+    const floodGeo = this._geo(new THREE.ConeGeometry(9, 30, 10, 1, true));
     this.floods = [];
-    for (let i = 0; i < 3; i += 1) {
-      const a = (i / 3) * TAU + 0.6;
+    for (const mod of modules) {
       const flood = new THREE.Mesh(floodGeo, this.floodMaterial);
-      flood.position.set(Math.cos(a) * 5, -19, Math.sin(a) * 6);
-      flood.rotation.set(Math.sin(a) * 0.3, 0, -Math.cos(a) * 0.3);
+      flood.position.set(Math.cos(mod.a) * 16, -4.4 - 15, Math.sin(mod.a) * 16);
       flood.renderOrder = 2;
       root.add(flood);
       this.floods.push(flood);
@@ -2068,8 +2223,39 @@ export class SeaWorld {
 
     root.updateMatrix();
     root.matrixAutoUpdate = false;
+    root.updateMatrixWorld(true);
     this.station = root;
     this.group.add(root);
+  }
+
+  /* Keep a body of radius r out of the station. Colliders are in station-local
+     space. Returns true when it pushed, and bleeds the velocity going in. */
+  collideStation(position, velocity, r) {
+    if (!this.stationColliders) return false;
+    const S = this.stationPosition;
+    const px = position.x - S.x;
+    const py = position.y - S.y;
+    const pz = position.z - S.z;
+    // Cheap reject: nothing of the station is more than ~40 m from its centre.
+    if (px * px + py * py + pz * pz > 45 * 45) return false;
+    let hit = false;
+    for (const c of this.stationColliders) {
+      const push = stationPush(c, position.x - S.x, position.y - S.y, position.z - S.z, r);
+      if (!push) continue;
+      hit = true;
+      position.x += push[0] * push[3];
+      position.y += push[1] * push[3];
+      position.z += push[2] * push[3];
+      if (velocity) {
+        const into = velocity.x * push[0] + velocity.y * push[1] + velocity.z * push[2];
+        if (into < 0) {
+          velocity.x -= push[0] * into * 1.2;
+          velocity.y -= push[1] * into * 1.2;
+          velocity.z -= push[2] * into * 1.2;
+        }
+      }
+    }
+    return hit;
   }
 
   /* ----------------------------------------------------------------- flow */
@@ -2330,9 +2516,25 @@ export class SeaWorld {
     /* Far away the beacon has to fight the fog, so it gets bigger, not brighter. */
     this.beaconSprite.scale.setScalar(lerp(14, 46, smoothstep(60, 900, dist)) * lerp(0.85, 1.15, level));
 
-    this.ringGlowMaterial.opacity = lerp(0.28, 0.62, 0.5 + 0.5 * Math.sin(t * 0.9 + 1.1));
+    // Dimmer up close, where it fills the glass, than out in the fog.
+    const near = 1 - smoothstep(20, 60, this.distanceToStation(cam));
+    this.ringGlowMaterial.opacity = lerp(0.22, 0.5, 0.5 + 0.5 * Math.sin(t * 0.9 + 1.1)) * (1 - near * 0.55);
     this.floodMaterial.opacity = 0.06 + 0.02 * Math.sin(t * 0.6);
     this.stationLight.intensity = lerp(520, 700, breath);
+
+    // Guide lights chase in toward the bay; running lights breathe; strobes flash.
+    if (this.guideMaterials) {
+      const beat = Math.floor(t * 2.5) % 2;
+      this.guideMaterials[0].opacity = beat ? 0.25 : 1;
+      this.guideMaterials[1].opacity = beat ? 1 : 0.25;
+    }
+    if (this.navLights) {
+      for (const n of this.navLights) {
+        n.material.opacity = n.strobe
+          ? (Math.sin(t * 3.1 + n.phase) > 0.93 ? 1 : 0.08)
+          : 0.55 + 0.35 * Math.sin(t * 1.2 + n.phase);
+      }
+    }
 
     this.polypMaterial.opacity = lerp(0.5, 0.82, 0.5 + 0.5 * Math.sin(t * 0.7));
     this.wormGlowMaterial.opacity = lerp(0.6, 0.95, 0.5 + 0.5 * Math.sin(t * 0.43 + 2.2));
