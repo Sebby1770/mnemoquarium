@@ -32,7 +32,7 @@ export const ZONES = [
     snow: 0.15,              // marine snow density 0..1
     valueMultiplier: 1.0,
     hostileBudget: 1,
-    hostiles: [["shark", 0.72], ["lamprey", 0.28]],
+    hostiles: [["shark", 0.6], ["lamprey", 0.22], ["razorfin", 0.3]],
     blurb: "warm, shallow, and already picked over",
   },
   {
@@ -46,7 +46,7 @@ export const ZONES = [
     snow: 0.3,
     valueMultiplier: 1.8,
     hostileBudget: 2,
-    hostiles: [["shark", 0.34], ["squid", 0.26], ["lamprey", 0.24], ["greatwhite", 0.16]],
+    hostiles: [["shark", 0.3], ["squid", 0.22], ["lamprey", 0.2], ["greatwhite", 0.14], ["razorfin", 0.22], ["inkwidow", 0.14]],
     blurb: "green columns, and things that hold on",
   },
   {
@@ -60,7 +60,7 @@ export const ZONES = [
     snow: 0.55,
     valueMultiplier: 3.2,
     hostileBudget: 4,
-    hostiles: [["shark", 0.2], ["squid", 0.28], ["angler", 0.12], ["lamprey", 0.16], ["trapjaw", 0.12], ["grandmother", 0.12]],
+    hostiles: [["shark", 0.18], ["squid", 0.24], ["angler", 0.12], ["lamprey", 0.14], ["trapjaw", 0.12], ["grandmother", 0.1], ["inkwidow", 0.18], ["choir", 0.12]],
     blurb: "the last of the light, spending itself",
   },
   {
@@ -74,7 +74,7 @@ export const ZONES = [
     snow: 0.8,
     valueMultiplier: 6.0,
     hostileBudget: 4,
-    hostiles: [["squid", 0.22], ["angler", 0.18], ["leviathan", 0.12], ["trapjaw", 0.16], ["gulper", 0.16], ["ninefold", 0.1], ["grandmother", 0.06]],
+    hostiles: [["squid", 0.22], ["angler", 0.18], ["leviathan", 0.12], ["trapjaw", 0.16], ["gulper", 0.16], ["ninefold", 0.1], ["grandmother", 0.06], ["choir", 0.18], ["inkwidow", 0.1]],
     blurb: "no light but the light that wants you closer",
   },
   {
@@ -88,7 +88,7 @@ export const ZONES = [
     snow: 1.0,
     valueMultiplier: 11.0,
     hostileBudget: 5,
-    hostiles: [["wraith", 0.2], ["leviathan", 0.14], ["gulper", 0.12], ["siren", 0.14], ["trapjaw", 0.1], ["ninefold", 0.1], ["tidewarden", 0.08], ["kraken", 0.12]],
+    hostiles: [["wraith", 0.2], ["leviathan", 0.14], ["gulper", 0.12], ["siren", 0.14], ["trapjaw", 0.1], ["ninefold", 0.1], ["tidewarden", 0.08], ["kraken", 0.12], ["choir", 0.14]],
     blurb: "where the tank keeps what it could not hold",
   },
 ];
@@ -324,6 +324,18 @@ export const UPGRADES = [
     values: [0, 1.2, 2.6, 4.4],
     costs: [650, 1700, 4100],
   },
+  {
+    id: "scrubber", name: "Ink Scrubbers", stat: "inkKept", icon: "≋",
+    blurb: "Wipers and a solvent jet on the glass. Ink clears faster.",
+    values: [100, 60, 35, 15],
+    costs: [480, 1250, 3000],
+  },
+  {
+    id: "lattice", name: "Shock Lattice", stat: "shockDamage", icon: "ϟ",
+    blurb: "A charged skin. Anything that grabs the hull lets go, hurting.",
+    values: [0, 40, 90, 160],
+    costs: [820, 2000, 4700],
+  },
 ];
 
 export const CREATURES = {
@@ -447,6 +459,35 @@ export const CREATURES = {
     unique: true, indifferent: true, huge: true,
     trophy: "a tooth the size of your forearm", mythic: true,
   },
+  inkwidow: {
+    id: "inkwidow", name: "Ink Widow", kind: "cephalopod",
+    hp: 190, damage: 11, speed: 11, turn: 2.4, radius: 2.2, length: 4.6,
+    aggro: 58, attackRange: 7.5, attackCooldown: 1.7, bounty: 420,
+    color: 0x4a1830, bellyColor: 0xff5c86, glow: 0.3,
+    /* Walks the floor like the harmless ones do, until it does not. It wraps
+       the boat, holds it, and blacks out the glass. */
+    crawler: true, grabs: true, inks: true,
+    trophy: "widow's ink sac", mythic: false,
+  },
+  razorfin: {
+    id: "razorfin", name: "Razorfin", kind: "beast",
+    hp: 32, damage: 7, speed: 22, turn: 3.1, radius: 1.0, length: 2.3,
+    aggro: 72, attackRange: 4.2, attackCooldown: 1.1, bounty: 55,
+    color: 0x7f8d9c, bellyColor: 0xe6eef4, glow: 0,
+    // Barracuda, and never one: a pack that takes turns.
+    swarm: [3, 5],
+    trophy: "razor jaw", mythic: false,
+  },
+  choir: {
+    id: "choir", name: "Stinging Choir", kind: "drifter",
+    hp: 42, damage: 6, speed: 5.5, turn: 1.3, radius: 1.5, length: 2.8,
+    aggro: 46, attackRange: 4.6, attackCooldown: 1.3, bounty: 95,
+    color: 0x5a2f8a, bellyColor: 0xff7ad9, glow: 1,
+    // Bells that sing in the lamp frequencies. They sting the cell flat.
+    swarm: [4, 7], drifter: true, batteryDrain: 3,
+    drainLine: "the bells sting the housing. the cell hums, and drops.",
+    trophy: "stinging bell", mythic: false,
+  },
   kraken: {
     id: "kraken", name: "Kraken of Static", kind: "boss",
     hp: 2600, damage: 60, speed: 9, turn: 0.7, radius: 14, length: 40,
@@ -468,8 +509,8 @@ export const HOTKEYS = {
   forward: ["KeyW"], back: ["KeyS"], left: ["KeyA"], right: ["KeyD"],
   up: ["Space"], down: ["KeyC", "ControlLeft"], boost: ["ShiftLeft"],
   lights: ["KeyF"], sonar: ["KeyR"], dock: ["KeyE"], cargo: ["Tab"],
-  weapon1: ["Digit1"], weapon2: ["Digit2"], weapon3: ["Digit3"],
-  pause: ["Escape"], map: ["KeyM"],
+  weapon1: ["Digit1"], weapon2: ["Digit2"], weapon3: ["Digit3"], weapon4: ["Digit4"],
+  cycle: ["KeyQ"], pause: ["Escape"], map: ["KeyM"],
 };
 
 export function zoneForDepth(depth) {

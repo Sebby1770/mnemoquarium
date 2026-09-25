@@ -781,6 +781,136 @@ function buildSperm(type) {
   return { group, parts: { tail: tailPivot, jaw }, materials: [material, pale] };
 }
 
+/* The Ink Widow: an octopus the size of a car, which is the only thing that
+   separates it from the ones that change colour at you on the shelf. A heavy
+   mantle, a ring of warning spots that light when it is angry, and eight arms
+   that trail behind it until it decides to put them on your glass. */
+function buildInkWidow(type) {
+  const group = new THREE.Group();
+  const L = type.length;
+  const R = type.radius;
+  const skin = shellMaterial(type, { roughness: 0.5, emissiveIntensity: 0.05 });
+  const spots = shellMaterial(type, { color: 0x14060c, emissive: type.bellyColor, emissiveIntensity: 0.8 });
+  const eyeMat = shellMaterial(type, { color: 0xffd36b, emissive: 0xffb000, emissiveIntensity: 0.6, roughness: 0.2 });
+  const pupil = shellMaterial(type, { color: 0x020102, emissiveIntensity: 0, roughness: 0.2 });
+
+  const mantle = new THREE.Mesh(new THREE.SphereGeometry(R * 0.62, 18, 14), skin);
+  mantle.scale.set(1, 0.95, 1.45);
+  mantle.position.set(0, R * 0.25, L * 0.02);
+  group.add(mantle);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(R * 0.42, 14, 10), skin);
+  head.scale.set(1.2, 0.85, 1);
+  head.position.set(0, -R * 0.05, L * 0.2);
+  group.add(head);
+
+  // Warning rings, like the little blue-ringed ones, but you are the prey now.
+  for (let i = 0; i < 9; i += 1) {
+    const a = (i / 9) * Math.PI * 2;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(R * 0.08, R * 0.022, 5, 10), spots);
+    ring.position.set(Math.cos(a) * R * 0.58, R * 0.25 + Math.sin(a) * R * 0.55, L * 0.02 + Math.sin(a * 2) * R * 0.2);
+    ring.lookAt(ring.position.clone().multiplyScalar(2));
+    group.add(ring);
+  }
+
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(R * 0.13, 10, 8), eyeMat);
+    eye.position.set(side * R * 0.38, R * 0.12, L * 0.26);
+    group.add(eye);
+    const slit = new THREE.Mesh(new THREE.BoxGeometry(R * 0.16, R * 0.035, R * 0.04), pupil);
+    slit.position.set(side * R * 0.42, R * 0.12, L * 0.3);
+    group.add(slit);
+  }
+
+  const arms = [];
+  for (let i = 0; i < 8; i += 1) {
+    const angle = (i / 8) * Math.PI * 2 + Math.PI / 8;
+    const { root, joints } = limb(7, L * 1.1, R * 0.12, skin);
+    root.position.set(Math.cos(angle) * R * 0.3, -R * 0.2 + Math.sin(angle) * R * 0.22, L * 0.18);
+    // Trail behind, loosely splayed: the arms leave the head and stream back
+    // past the mantle, and the swim wave curls them.
+    root.rotation.y = Math.PI + Math.cos(angle) * 0.28;
+    root.rotation.x = Math.sin(angle) * 0.22;
+    group.add(root);
+    arms.push({ root, joints, angle, long: true });
+  }
+  return { group, parts: { arms, spots: [spots] }, materials: [skin, spots, eyeMat, pupil] };
+}
+
+/* A barracuda: all length and jaw. Silver with dark bars, an underbite of
+   needles, two small dorsals set far apart and a forked tail. */
+function buildRazorfin(type) {
+  const group = new THREE.Group();
+  const L = type.length;
+  const material = shellMaterial(type, { roughness: 0.35, emissiveIntensity: 0 });
+  const dark = shellMaterial(type, { color: 0x1c232b, roughness: 0.5, emissiveIntensity: 0 });
+  const profile = (t) => clamp01(Math.pow(Math.sin(Math.PI * Math.pow(t, 0.85)), 0.8) * (0.25 + 0.75 * smoothstep(0, 0.35, t)));
+  const body = spindle({ length: L, radius: L * 0.065, rings: 18, segments: 10, profile, flattenX: 0.72 });
+  group.add(new THREE.Mesh(body, material));
+  for (let i = 0; i < 6; i += 1) {
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(L * 0.05, L * 0.03, L * 0.025), dark);
+    bar.position.set(0, L * 0.05, L * 0.2 - i * L * 0.09);
+    group.add(bar);
+  }
+  const jaw = new THREE.Group();
+  jaw.position.set(0, -L * 0.012, L * 0.46);
+  const lower = new THREE.Mesh(new THREE.ConeGeometry(L * 0.022, L * 0.14, 6), material);
+  lower.geometry.rotateX(Math.PI / 2);
+  lower.position.z = L * 0.03;
+  jaw.add(lower);
+  group.add(jaw);
+  for (const [z, h] of [[L * 0.05, 0.1], [-L * 0.24, 0.07]]) {
+    const fin = blade({ length: L * h, width: L * h * 0.8, taper: 0.1, sweep: 0.9 });
+    fin.rotateZ(Math.PI / 2);
+    fin.rotateY(Math.PI / 2);
+    fin.translate(0, L * 0.055, z);
+    group.add(new THREE.Mesh(fin, dark));
+  }
+  const tailPivot = new THREE.Group();
+  tailPivot.position.z = -L * 0.47;
+  for (const s of [1, -1]) {
+    const lobe = blade({ length: L * 0.14, width: L * 0.07, taper: 0.1, sweep: 1 });
+    lobe.rotateZ(s * Math.PI / 2);
+    lobe.rotateY(Math.PI / 2);
+    lobe.rotateX(-s * 0.5);
+    tailPivot.add(new THREE.Mesh(lobe, dark));
+  }
+  group.add(tailPivot);
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(L * 0.016, 8, 6), dark);
+    eye.position.set(side * L * 0.028, L * 0.018, L * 0.39);
+    group.add(eye);
+  }
+  return { group, parts: { tail: tailPivot, jaw }, materials: [material, dark] };
+}
+
+/* The Stinging Choir: a bell that travels crown-first, lit from inside in the
+   same colours the lamps are, with a curtain of stinging threads behind. */
+function buildChoir(type) {
+  const group = new THREE.Group();
+  const R = type.radius;
+  const bell = shellMaterial(type, {
+    roughness: 0.3, transparent: true, opacity: 0.38, emissiveIntensity: 0.28, depthWrite: false,
+  });
+  const core = shellMaterial(type, { color: type.bellyColor, emissive: type.bellyColor, emissiveIntensity: 1.1 });
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(R, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), bell);
+  dome.rotation.x = Math.PI / 2;
+  dome.scale.set(1, 1, 0.8);
+  group.add(dome);
+  const heart = new THREE.Mesh(new THREE.SphereGeometry(R * 0.3, 10, 8), core);
+  heart.position.z = R * 0.25;
+  group.add(heart);
+  const threads = [];
+  for (let i = 0; i < 10; i += 1) {
+    const a = (i / 10) * Math.PI * 2;
+    const { root, joints } = limb(4, type.length * 1.3, R * 0.05, bell);
+    root.position.set(Math.cos(a) * R * 0.85, Math.sin(a) * R * 0.85, -R * 0.1);
+    root.rotation.y = Math.PI;
+    group.add(root);
+    threads.push({ root, joints });
+  }
+  return { group, parts: { threads, bell: dome, bulb: heart }, materials: [bell, core] };
+}
+
 function randRangeLocal(rng, lo, hi) {
   return lo + rng.random() * (hi - lo);
 }
@@ -802,6 +932,7 @@ const SWIM_SPECS = {
   gulper: { amp: 0.11, k: 6.0, rate: 1.8, axis: 0, counter: 0.3 },
   lamprey: { amp: 0.16, k: 9.0, rate: 4.2, axis: 0, counter: 0.6 },
   sperm: { amp: 0.045, k: 3.6, rate: 1.0, axis: 1, counter: 0.5 },
+  razorfin: { amp: 0.09, k: 6.2, rate: 3.6, axis: 0, counter: 1 },
 };
 
 function swimUniforms(type, spec) {
@@ -876,6 +1007,9 @@ function patchSwim(material, uniforms) {
 }
 
 const BUILDERS = {
+  inkwidow: buildInkWidow,
+  razorfin: buildRazorfin,
+  choir: buildChoir,
   greatwhite: buildScarredShark,
   grandmother: buildScarredShark,
   tidewarden: buildLeviathan,
@@ -1210,7 +1344,14 @@ export class CreatureManager {
     if (type.batteryDrain) {
       sub.drainBattery(type.batteryDrain);
       if (this.game.vfx) this.game.vfx.inkCloud(sub.position, 6);
-      this.game.log("the arms find the housing. the cell bleeds down.", "bad");
+      this.game.log(type.drainLine || "the arms find the housing. the cell bleeds down.", "bad");
+    }
+    if (type.grabs && !(c.holding > 0)) this._grab(c, sub);
+    if (type.inks) {
+      // Not a cloud in the water: ink on the glass, which is worse.
+      sub.ink = 1;
+      if (this.game.vfx) this.game.vfx.inkCloud(sub.position, 5);
+      this.game.bus.emit("sub:inked", { creature: c });
     }
 
     // Knock the boat around: a hit you do not feel is not a hit.
@@ -1222,6 +1363,35 @@ export class CreatureManager {
     if (this.game.vfx) this.game.vfx.screenShake(clamp01(type.damage / 60));
     if (this.game.audio) this.game.audio.sfx(type.boss || type.mythic ? "roar" : "damage");
     void distance;
+  }
+
+  /* Arms across the glass. The boat is held in front of the thing's face for
+     a few seconds, barely able to move — unless the hull is wired to bite. */
+  _grab(c, sub) {
+    const game = this.game;
+    const shock = (game.stats && game.stats.shockDamage) || 0;
+    if (shock > 0 && sub.drawBattery(6)) {
+      c.holding = 0;
+      c.stun = 2.2;
+      if (game.vfx) {
+        game.vfx.hitSpark(c.position, 0x9fe8ff);
+        game.vfx.screenShake(0.3);
+      }
+      if (game.audio) game.audio.sfx("hit");
+      game.log("the lattice fires. it lets go, and it did not enjoy that.", "good");
+      this.damage(c, shock, { source: "lattice" });
+      return;
+    }
+    c.holding = 2.8;
+    sub.grabbedBy = c;
+    game.log("arms across the glass. it has the boat.", "bad");
+    game.bus.emit("sub:grabbed", { creature: c });
+  }
+
+  _release(c) {
+    c.holding = 0;
+    const sub = this.game.sub;
+    if (sub && sub.grabbedBy === c) sub.grabbedBy = null;
   }
 
   /* The sea forgets one thing in your hold. This is the wraith's whole point:
@@ -1246,6 +1416,26 @@ export class CreatureManager {
   _move(c, dt) {
     const type = c.type;
     const sub = this.game.sub;
+
+    // Holding the boat: wrapped over the glass, riding along with it.
+    if (c.holding > 0) {
+      c.holding -= dt;
+      if (!sub || c.stun > 0 || c.holding <= 0 || this.game.mode !== "dive") {
+        this._release(c);
+        c.stun = Math.max(c.stun, 1.2);
+      } else {
+        sub.forward(_v3);
+        _v.copy(sub.position).addScaledVector(_v3, 2.4 + type.radius * 0.5);
+        c.position.lerp(_v, clamp01(dt * 6));
+        _v2.copy(sub.position).sub(c.position);
+        if (_v2.lengthSq() > 0.0001) {
+          _q.setFromUnitVectors(_forward, _v2.normalize());
+          c.object.quaternion.slerp(_q, clamp01(dt * 5));
+        }
+        c.velocity.copy(sub.velocity);
+        return;
+      }
+    }
 
     // Buried things do not patrol. They wait, which is worse.
     if (c.buried) {
@@ -1280,9 +1470,11 @@ export class CreatureManager {
       }
     }
 
-    // Keep off the floor and out of the sky.
+    // Keep off the floor and out of the sky — except a crawler, which walks it.
     const floor = this.game.world.heightAt(c.position.x, c.position.z);
-    const minY = floor + type.radius * 1.6;
+    const crawling = type.crawler && c.state === "patrol";
+    if (crawling) _v.y = floor + type.radius * 0.5;
+    const minY = floor + type.radius * (crawling ? 0.45 : 1.6);
     if (_v.y < minY) _v.y = minY;
     if (_v.y > -type.radius * 1.2) _v.y = -type.radius * 1.2;
 
@@ -1317,6 +1509,8 @@ export class CreatureManager {
       c.jetPulse = Math.max(0, (c.jetPulse || 0) - dt * 1.8);
       speed *= 0.35 + c.jetPulse * 2.2;
     }
+    // A bell only moves on the beat.
+    if (type.drifter) speed *= 0.25 + Math.max(0, Math.sin(this.time * 2.2 + c.phase)) * 1.5;
     // The wraith drifts. It does not appear to be swimming at all.
     if (type.phasing) speed *= 0.6 + Math.sin(this.time * 0.7 + c.phase) * 0.35;
 
@@ -1396,6 +1590,15 @@ export class CreatureManager {
           joint.rotation.y = Math.cos(t * 1.7 - j * 0.5 + lead) * sweep * 0.09;
         }
       }
+    }
+    if (parts.spots) {
+      // The rings light when it is angry, and strobe when it is about to grab.
+      const angry = c.aggro ? 1.4 + Math.sin(t * (c.state === "attack" ? 14 : 5)) * 0.8 : 0.3;
+      c.baseEmissive[1] = angry;
+    }
+    if (parts.bell) {
+      const beat = 1 + Math.max(0, Math.sin(this.time * 2.2 + c.phase)) * 0.18;
+      parts.bell.scale.set(beat, beat, 0.8 / beat);
     }
     if (parts.fins) {
       for (let i = 0; i < parts.fins.length; i += 1) {

@@ -53,6 +53,16 @@ modules disagree the one that broke this file is wrong.
 | `src/audio.js` | agent | `Audio` |
 | `src/save.js` | agent | `loadProfile, saveProfile, newProfile, clearProfile, SAVE_KEY, migrate` |
 | `src/game.js` + `src/main.js` | agent | `Game`; `main.js` has no exports |
+| `src/chart.js` | agent | `Chart` — the sea chart panel (`M`), built from JS |
+| `src/nav.js` | agent | `bearingOf, compassPoint, formatRange, rumourCentre, COMPASS_POINTS, RUMOUR_RADIUS` — no three.js |
+| `src/input.js` | agent | `InputDevices` (gamepad + touch, writes `sub.analog` and `sub.lookDX/DY`), `watchMenuPad` |
+| `src/stick.js` | agent | `shapeStick, shapeAxis, thumbVector, edges, DEADZONE` — no DOM, no three.js |
+| `src/frame.js` | agent | `splitFrame, MAX_DT, MAX_STEPS` — no three.js |
+| `src/base.js` | agent | `Base` — the walkable Hull: own scene and camera, drawn in modes "base" and "station" |
+| `src/walk.js` | agent | `resolveCircle, pickInteractable` — no three.js |
+| `src/submodel.js` | agent | `buildSubModel(upgrades), fittedParts(upgrades)` |
+| `src/ambient.js` | agent | `AmbientLife, AMBIENT_KINDS, placeFor` — one InstancedMesh per kind, vertex-animated |
+| `src/quality.js` | agent | `ResolutionGovernor, pixelRatioFor, SCALE, QUALITY_MODES` — no three.js |
 
 ## The `game` object
 
@@ -69,7 +79,7 @@ game = {
   profile,             // persisted player profile (see save.js)
   stats,               // result of progression.computeStats(profile.upgrades)
   ecology, world, sub, fish, creatures, combat, vfx, hud, audio,
-  mode,                // "boot" | "start" | "dive" | "station" | "paused" | "dead"
+  mode,                // "boot" | "start" | "dive" | "base" | "station" | "paused" | "chart" | "dead"
   elapsed,             // seconds of dive time
   dt,                  // last frame delta, clamped to <= 1/20
   paused,              // bool
@@ -84,8 +94,11 @@ game = {
 
 Construction order in `game.js`: `save -> ecology -> world -> vfx -> sub -> fish
 -> creatures -> combat -> audio -> hud`.
-Update order each frame: `sub -> world -> fish -> creatures -> combat -> vfx ->
-audio -> hud`, then `renderer.render(scene, camera)`.
+Update order each frame: `input`, then `splitFrame(raw)` steps of at most
+`MAX_DT` each running `sub -> fish -> creatures -> combat`, then once per frame
+`world -> sky -> landmarks -> water -> vfx -> audio -> hud -> chart`, then the
+render. A frame slower than `MAX_DT` is simulated in several steps rather than
+clamped, so a slow machine plays in real time instead of slow motion.
 
 ## Shared data shapes
 
@@ -136,8 +149,10 @@ audio -> hud`, then `renderer.render(scene, camera)`.
   cargo: [CargoItem],
   ammo: { torpedo: 0 },
   stats: { dives:0, fishSold:0, creditsEarned:0, deepest:0, deaths:0,
-           kills:{}, discovered:[] /* species indices seen */ },
-  settings: { sound:false, invertY:false, sensitivity:1 },
+           kills:{}, discovered:[] /* species indices seen */,
+           landmarks:[] /* surveyed landmark ids, "lm-N" */,
+           sighted:[] /* ambient kinds seen: "octopus", "jelly", ... */ },
+  settings: { sound:false, invertY:false, sensitivity:1, quality:"auto" },
   updated: 0,   // ms epoch
 }
 ```

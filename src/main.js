@@ -12,6 +12,7 @@ import { RARITY, ZONES, zoneIndex } from "./config.js";
 import { formatCredits, formatDepth } from "./util.js";
 import { Ecology } from "./ecology.js";
 import { clearProfile, loadProfile } from "./save.js";
+import { watchMenuPad } from "./input.js";
 
 /* Seas worth surfacing. Each grows a different roster, and the deeper bands
    are where the odd ones end up, so the list is chosen for words that read
@@ -298,6 +299,8 @@ function init() {
   if (urlPhrase) saved = saved && saved.phrase === urlPhrase ? saved : null;
 
   renderMenu();
+  // A controller can dive from the menu; the game takes the pad over once it exists.
+  watchMenuPad(() => !!window.__deep);
 
   els.begin.addEventListener("click", () => boot(phrase, null));
 

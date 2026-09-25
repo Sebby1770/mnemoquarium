@@ -261,6 +261,9 @@ export function computeStats(upgrades) {
   stats.captureRange = Math.max(0, num(stats.captureRange, SUB.captureRangeBase));
   stats.harpoonDamage = Math.max(0, num(stats.harpoonDamage, WEAPONS.harpoon.damage));
   stats.repairRate = Math.max(0, num(stats.repairRate, 0));
+  // Percent of an inking that is still on the glass, and the lattice's bite.
+  stats.inkKept = clamp(num(stats.inkKept, 100), 0, 100);
+  stats.shockDamage = Math.max(0, num(stats.shockDamage, 0));
   stats.batteryTrickle = Math.max(0, num(stats.batteryTrickle, 0));
 
   return stats;

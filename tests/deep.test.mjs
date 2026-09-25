@@ -14,7 +14,12 @@ globalThis.MnemoEngine = require("../engine.js");
 const { Ecology } = await import("../src/ecology.js");
 const progression = await import("../src/progression.js");
 const save = await import("../src/save.js");
-const { ZONES, UPGRADES, CREATURES, RARITY, zoneForDepth } = await import("../src/config.js");
+const { ZONES, UPGRADES, CREATURES, RARITY, WEAPONS, HOTKEYS, zoneForDepth } = await import("../src/config.js");
+const quality = await import("../src/quality.js");
+const nav = await import("../src/nav.js");
+const stick = await import("../src/stick.js");
+const frame = await import("../src/frame.js");
+const walk = await import("../src/walk.js");
 
 const PHRASE = "forgotten kiosk under neon rain";
 
@@ -200,4 +205,207 @@ test("saving without any storage at all is a no-op, not a crash", () => {
   assert.doesNotThrow(() => save.clearProfile());
   if (previous === undefined) delete globalThis.localStorage;
   else globalThis.localStorage = previous;
+});
+
+test("surveyed landmarks survive a save, so their fees are only paid once", () => {
+  const profile = save.newProfile(PHRASE, 3);
+  profile.stats.landmarks = ["lm-0", "lm-7", "lm-7", "lm-12"];
+  const back = save.migrate(JSON.parse(JSON.stringify(profile)));
+  assert.deepEqual(back.stats.landmarks, ["lm-0", "lm-7", "lm-12"]);
+
+  const junk = save.migrate({ phrase: PHRASE, stats: { landmarks: ["lm-1", 4, "<b>", "lm-99999", null] } });
+  assert.deepEqual(junk.stats.landmarks, ["lm-1"], "only well-formed ids are kept");
+  assert.deepEqual(save.migrate({ phrase: PHRASE }).stats.landmarks, [], "an old save has none");
+});
+
+test("the graphics setting is saved, and nonsense falls back to auto", () => {
+  assert.equal(save.newProfile(PHRASE, 1).settings.quality, "auto");
+  assert.equal(save.migrate({ phrase: PHRASE, settings: { quality: "low" } }).settings.quality, "low");
+  assert.equal(save.migrate({ phrase: PHRASE, settings: { quality: "ultra" } }).settings.quality, "auto");
+  assert.equal(save.migrate({ phrase: PHRASE }).settings.quality, "auto");
+});
+
+test("every weapon on the rack has a number key", () => {
+  const count = Object.keys(WEAPONS).length;
+  for (let i = 1; i <= count; i += 1) {
+    assert.ok(Array.isArray(HOTKEYS[`weapon${i}`]) && HOTKEYS[`weapon${i}`].length,
+      `weapon ${i} of ${count} has no key`);
+  }
+  const codes = Object.values(HOTKEYS).flat();
+  assert.equal(new Set(codes).size, codes.length, "no key is bound to two actions");
+});
+
+/* Feed the governor a steady frame time for a number of seconds. */
+function run(gov, frameTime, seconds) {
+  const changes = [];
+  for (let t = 0; t < seconds; t += frameTime) {
+    const next = gov.sample(frameTime);
+    if (next !== null) changes.push(next);
+  }
+  return changes;
+}
+
+test("the resolution governor gives up pixels when frames are slow", () => {
+  const gov = new quality.ResolutionGovernor("auto");
+  assert.equal(gov.scale, 1);
+  assert.deepEqual(run(gov, 1 / 60, 10), [], "a steady 60 costs nothing");
+  const drops = run(gov, 1 / 25, 20);
+  assert.ok(drops.length >= 3, "a slideshow keeps stepping down");
+  assert.equal(gov.scale, quality.SCALE.min, "down to the floor and no further");
+  for (let i = 1; i < drops.length; i += 1) assert.ok(drops[i] < drops[i - 1]);
+});
+
+test("the resolution governor climbs back slowly and not into a scale that failed", () => {
+  const gov = new quality.ResolutionGovernor("auto");
+  run(gov, 1 / 30, 3);
+  const failed = gov.scale;
+  assert.ok(failed < 1, "it dropped");
+  const rises = run(gov, 1 / 120, 15);
+  assert.ok(rises.length > 0, "fast frames earn resolution back");
+  assert.ok(rises.every((s) => s < failed + 0.1), "but not the scale that was too slow, while it remembers");
+  run(gov, 1 / 120, 90);
+  assert.equal(gov.scale, 1, "and once it has forgotten, all the way home");
+});
+
+test("the resolution governor ignores hitches, and the fixed modes ignore everything", () => {
+  const gov = new quality.ResolutionGovernor("auto");
+  assert.deepEqual(run(gov, 0.5, 30), [], "a tab switch is not a slow GPU");
+  const high = new quality.ResolutionGovernor("high");
+  assert.deepEqual(run(high, 1 / 20, 20), []);
+  assert.equal(high.scale, 1);
+  const low = new quality.ResolutionGovernor("low");
+  assert.equal(low.scale, quality.SCALE.low);
+  assert.equal(new quality.ResolutionGovernor("nonsense").mode, "auto");
+});
+
+test("pixel ratio is capped at 2 and floored at a half", () => {
+  assert.equal(quality.pixelRatioFor(3, 1), 2);
+  assert.equal(quality.pixelRatioFor(2, 0.5), 1);
+  assert.equal(quality.pixelRatioFor(1, 0.3), 0.5);
+  assert.equal(quality.pixelRatioFor(undefined, 1), 1);
+});
+
+test("bearings call -Z north and go clockwise", () => {
+  assert.equal(nav.bearingOf(0, -1), 0);
+  assert.equal(nav.bearingOf(1, 0), 90);
+  assert.equal(nav.bearingOf(0, 1), 180);
+  assert.equal(nav.bearingOf(-1, 0), 270);
+  assert.equal(nav.compassPoint(0), "N");
+  assert.equal(nav.compassPoint(359), "N");
+  assert.equal(nav.compassPoint(135), "SE");
+  assert.equal(nav.formatRange(420.4), "420 m");
+  assert.equal(nav.formatRange(1250), "1.3 km");
+});
+
+test("a rumour is fixed, vague, and always contains the place", () => {
+  for (let seed = 1; seed < 4e9; seed += 97531247) {
+    const lm = { seed, position: { x: 1200, y: -400, z: -800 } };
+    const a = nav.rumourCentre(lm);
+    const b = nav.rumourCentre(lm);
+    assert.deepEqual(a, b, "the same landmark draws the same circle");
+    const off = Math.hypot(a.x - lm.position.x, a.z - lm.position.z);
+    assert.ok(off < a.radius, "the truth is inside the circle");
+    assert.ok(off > 20, "but not at its centre");
+  }
+});
+
+test("a stick has a radial deadzone and no jump at its edge", () => {
+  assert.deepEqual(stick.shapeStick(0.1, 0.1), [0, 0], "resting drift is ignored");
+  const [x0] = stick.shapeStick(stick.DEADZONE + 0.001, 0);
+  assert.ok(x0 > 0 && x0 < 0.01, "just past the deadzone is just past zero");
+  const [x1, y1] = stick.shapeStick(1, 0);
+  assert.ok(Math.abs(x1 - 1) < 1e-9 && y1 === 0, "full throw is full");
+  const [dx, dy] = stick.shapeStick(0.5, 0.5);
+  assert.ok(Math.abs(dx - dy) < 1e-12, "a diagonal stays a diagonal");
+  const [hx] = stick.shapeStick(0.55, 0);
+  assert.ok(hx < 0.45, "the first half of the throw is for aiming");
+  assert.equal(stick.shapeAxis(0.05), 0);
+  assert.equal(stick.shapeAxis(-1), -1);
+});
+
+test("the touch joystick caps at the rim and boosts past it", () => {
+  const rest = stick.thumbVector(2, 3, 56);
+  assert.deepEqual([rest.x, rest.y], [0, 0]);
+  const full = stick.thumbVector(0, -56, 56);
+  assert.ok(Math.abs(full.y + 1) < 1e-9 && !full.boost);
+  const past = stick.thumbVector(0, -200, 56);
+  assert.ok(Math.abs(past.y + 1) < 1e-9, "past the rim is still full, not more");
+  assert.ok(past.boost, "and asks for boost");
+});
+
+test("button edges see presses and releases, not holds", () => {
+  assert.deepEqual(stick.edges([false, true, true], [true, true, false]), { down: [0], up: [2] });
+  assert.deepEqual(stick.edges([], [false, true]), { down: [1], up: [] });
+});
+
+test("a slow frame is cut into steps instead of slowing the sea down", () => {
+  assert.deepEqual(frame.splitFrame(1 / 60), { steps: 1, dt: 1 / 60 });
+  const twelve = frame.splitFrame(1 / 12);
+  assert.equal(twelve.steps, 2);
+  assert.ok(Math.abs(twelve.steps * twelve.dt - 1 / 12) < 1e-12, "all of the frame is simulated");
+  assert.ok(twelve.dt <= frame.MAX_DT + 1e-12, "and no step is longer than the limit");
+  const hitch = frame.splitFrame(3);
+  assert.equal(hitch.steps, frame.MAX_STEPS, "a hitch is capped, not replayed");
+  assert.ok(Math.abs(hitch.dt - frame.MAX_DT) < 1e-12);
+  assert.deepEqual(frame.splitFrame(0), { steps: 1, dt: 0 });
+  assert.deepEqual(frame.splitFrame(NaN), { steps: 1, dt: 0 });
+  assert.equal(frame.splitFrame(frame.MAX_DT).steps, 1, "exactly the limit is one step");
+});
+
+test("walking slides along a wall instead of sticking to it", () => {
+  const wall = [{ minX: -1, maxX: 1, minZ: -10, maxZ: 10 }];
+  // Walking diagonally into the wall's face keeps the along-wall motion.
+  const [x, z] = walk.resolveCircle(1.2, 3, 0.35, wall);
+  assert.ok(Math.abs(x - 1.35) < 1e-9, "pushed out to exactly the radius");
+  assert.equal(z, 3, "the motion along the wall survives");
+  // Nowhere near it: untouched.
+  assert.deepEqual(walk.resolveCircle(5, 5, 0.35, wall), [5, 5]);
+  // Somehow inside it: out by the nearest face.
+  const [ix] = walk.resolveCircle(0.8, 0, 0.35, wall);
+  assert.ok(Math.abs(ix - 1.35) < 1e-9);
+  // A corner between two boxes settles clear of both.
+  const corner = [{ minX: 0, maxX: 1, minZ: -5, maxZ: 5 }, { minX: -5, maxX: 5, minZ: 0, maxZ: 1 }];
+  const [cx, cz] = walk.resolveCircle(-0.1, -0.1, 0.35, corner);
+  for (const b of corner) {
+    const nx = Math.max(b.minX, Math.min(cx, b.maxX));
+    const nz = Math.max(b.minZ, Math.min(cz, b.maxZ));
+    assert.ok(Math.hypot(cx - nx, cz - nz) >= 0.35 - 1e-6, "clear of every box");
+  }
+});
+
+test("you use what you are looking at, not what is behind you", () => {
+  const items = [{ id: "front", x: 0, z: -2 }, { id: "behind", x: 0, z: 1.5 }, { id: "far", x: 0, z: -9 }];
+  assert.equal(walk.pickInteractable(0, 0, 0, -1, items).id, "front");
+  assert.equal(walk.pickInteractable(0, 0, 0, 1, items).id, "behind");
+  assert.equal(walk.pickInteractable(0, 0, 1, 0, items), null, "nothing off to the side");
+  assert.equal(walk.pickInteractable(0, -8, 0, -1, items).id, "far", "and only in reach");
+});
+
+test("sightings are saved once each, and junk is dropped", () => {
+  const back = save.migrate({ phrase: PHRASE, stats: { sighted: ["octopus", "ray", "octopus", "<x>", 3, "jelly"] } });
+  assert.deepEqual(back.stats.sighted, ["octopus", "ray", "jelly"]);
+  assert.deepEqual(save.newProfile(PHRASE, 1).stats.sighted, []);
+});
+
+test("every creature a band can spawn exists, and the new ones are placed", () => {
+  for (const zone of ZONES) {
+    for (const [id] of zone.hostiles) assert.ok(CREATURES[id], `${zone.id} spawns unknown ${id}`);
+  }
+  const spawned = new Set(ZONES.flatMap((z) => z.hostiles.map(([id]) => id)));
+  for (const id of ["inkwidow", "razorfin", "choir"]) assert.ok(spawned.has(id), `${id} lives somewhere`);
+  assert.ok(CREATURES.inkwidow.grabs && CREATURES.inkwidow.inks);
+});
+
+test("the scrubbers and the lattice are real upgrades with sane stock values", () => {
+  const stock = progression.computeStats({});
+  assert.equal(stock.inkKept, 100, "stock glass keeps all of the ink");
+  assert.equal(stock.shockDamage, 0, "and there is no lattice");
+  const fitted = progression.computeStats({ scrubber: 3, lattice: 2 });
+  assert.ok(fitted.inkKept < stock.inkKept);
+  assert.ok(fitted.shockDamage > 0);
+  for (const id of ["scrubber", "lattice"]) {
+    const up = UPGRADES.find((u) => u.id === id);
+    assert.ok(up, id);
+    assert.equal(up.costs.length, up.values.length - 1, `${id} has a price for every mark`);
+  }
 });

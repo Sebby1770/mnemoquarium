@@ -402,7 +402,9 @@ export class Combat {
     if (!Number.isFinite(index) || index < 0 || index >= this.weapons.length) return;
     const weapon = this.weapons[index];
     if (this._lockedFor(weapon.id)) {
-      this._deny("no tubes fitted. the drydock sells them.");
+      this._deny(weapon.id === "net"
+        ? "no net on the rack. the drydock sells one."
+        : "no tubes fitted. the drydock sells them.");
       return;
     }
     if (index === this.currentIndex) return;
