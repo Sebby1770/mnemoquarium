@@ -198,6 +198,17 @@ export class InputDevices {
       return;
     }
 
+    // Photo mode: the right stick click toggles it; A or the trigger shoots.
+    if (down.includes(B.rs) && game.photo) game.photo.toggle();
+    if (game.photo && game.photo.active) {
+      const [px, py] = shapeStick(axes[2], axes[3], 0.14, 1.8);
+      sub.lookDX += px * PAD_LOOK_PX * dt;
+      sub.lookDY += py * PAD_LOOK_PX * dt;
+      if (down.includes(B.a) || down.includes(B.rt)) game.photo.capture();
+      if (down.includes(B.b)) game.photo.exit();
+      return;
+    }
+
     // Flight.
     const [mx, my] = shapeStick(axes[0], axes[1]);
     a.forward += -my;
@@ -309,6 +320,7 @@ export class InputDevices {
       tap("chart", "CHART"),
       tap("sonar", "SONAR"),
       tap("lights", "LAMPS"),
+      tap("photo", "PHOTO"),
     );
 
     root.append(this.lookZone, this.stickZone, actions, bar);
@@ -473,6 +485,7 @@ export class InputDevices {
     else if (name === "lights") sub.setLights(!sub.lightsOn);
     else if (name === "chart") game.chart.show();
     else if (name === "pause") game.setMode("paused");
+    else if (name === "photo" && game.photo) game.photo.toggle();
   }
 
   applyTouch(a) {

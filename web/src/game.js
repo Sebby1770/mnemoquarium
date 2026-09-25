@@ -28,6 +28,8 @@ import { InputDevices } from "./input.js";
 import { splitFrame } from "./frame.js";
 import { AmbientLife } from "./ambient.js";
 import { Base } from "./base.js";
+import { PhotoMode } from "./photo.js";
+import { attachAnalytics } from "./analytics.js";
 
 const SAVE_INTERVAL = 4;       // seconds between debounced writes
 
@@ -106,6 +108,9 @@ export class Game {
     this.input = new InputDevices(this);
     // The inside of the Hull: its own scene, drawn while you are aboard.
     this.base = new Base(this);
+    this.photo = new PhotoMode(this);
+    this._captures = [];
+    this.offAnalytics = attachAnalytics(this);
 
     /* Patch everything already in the scene, then keep patching as creatures
        arrive. register() is idempotent, so spawning is cheap. */
@@ -189,6 +194,7 @@ export class Game {
     this.sub.undock();
     this.profile.stats.dives = (this.profile.stats.dives || 0) + 1;
     this.setMode("dive");
+    this._startSound();
 
     this.log(`the tanks flood. "${this.phrase}" is already down there, in ${this.ecology.species.length} shapes.`, "lore");
     this.log("hold the right mouse button on a fish to take it. the hold sells at the Hull behind you — dock, and walk aboard.", "info");
@@ -202,12 +208,32 @@ export class Game {
     this._raf = requestAnimationFrame(this._tick);
   }
 
+  /* The Dive click was a gesture, so most browsers let sound start here. Safari
+     wants the start inside the gesture itself, so the first click or key after
+     this tries again, once. */
+  _startSound() {
+    const audio = this.audio;
+    if (!audio || !this.profile.settings || !this.profile.settings.sound) return;
+    audio.start();
+    const retry = () => {
+      window.removeEventListener("pointerdown", retry, true);
+      window.removeEventListener("keydown", retry, true);
+      this._soundRetry = null;
+      if (this.profile.settings.sound && !this.disposed) audio.start();
+    };
+    this._soundRetry = retry;
+    window.addEventListener("pointerdown", retry, true);
+    window.addEventListener("keydown", retry, true);
+  }
+
   frame() {
     const raw = this.clock.getDelta();
     // Only a frame that draws the sea at full cost says anything about the GPU.
     if (this.mode === "dive" && this.governor.sample(raw) !== null) this.resize();
 
-    const { steps, dt: step } = splitFrame(raw);
+    // Photo mode holds the sea still: every system gets a zero step.
+    const frozen = this.photo && this.photo.frozen();
+    const { steps, dt: step } = frozen ? { steps: 1, dt: 0 } : splitFrame(raw);
     const dt = step * steps;
     this.dt = step;
 
@@ -228,6 +254,15 @@ export class Game {
     this.saveTimer -= dt;
     if (this.dirty && this.saveTimer <= 0) this.persist(true);
 
+    // A photo is taken at full resolution whatever the governor has chosen.
+    const capturing = this._captures.length > 0;
+    const sharpen = capturing && this.governor.scale < 1;
+    if (sharpen) {
+      this.renderer.setPixelRatio(pixelRatioFor(window.devicePixelRatio, 1));
+      this.renderer.setSize(window.innerWidth, Math.max(1, window.innerHeight), false);
+      if (this.post) this.post.setSize();
+    }
+
     // Aboard, the room is drawn instead of the sea.
     const aboard = this.base.active;
     const scene = aboard ? this.base.scene : this.scene;
@@ -244,6 +279,25 @@ export class Game {
     } else {
       this.renderer.render(scene, camera);
     }
+
+    /* Read the frame back now, in the same task as the draw: without
+       preserveDrawingBuffer the canvas is only guaranteed to hold it here. */
+    if (capturing) {
+      const callbacks = this._captures.splice(0);
+      for (const cb of callbacks) {
+        try {
+          cb(this.canvas);
+        } catch (err) {
+          console.warn("capture failed", err);
+        }
+      }
+      if (sharpen) this.resize();
+    }
+  }
+
+  /* Hand the next rendered frame to cb(canvas). */
+  requestCapture(cb) {
+    if (typeof cb === "function") this._captures.push(cb);
   }
 
   /* One fixed-ish step of everything that moves. */
@@ -560,8 +614,13 @@ export class Game {
     window.removeEventListener("orientationchange", this._onResize);
     document.removeEventListener("visibilitychange", this._onVisibility);
     window.removeEventListener("pagehide", this._onUnload);
+    if (this._soundRetry) {
+      window.removeEventListener("pointerdown", this._soundRetry, true);
+      window.removeEventListener("keydown", this._soundRetry, true);
+    }
 
-    for (const system of [this.base, this.input, this.chart, this.hud, this.audio, this.combat, this.ambient, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
+    if (this.offAnalytics) this.offAnalytics();
+    for (const system of [this.photo, this.base, this.input, this.chart, this.hud, this.audio, this.combat, this.ambient, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
       try {
         if (system && system.dispose) system.dispose();
       } catch (err) {

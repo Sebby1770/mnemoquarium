@@ -64,6 +64,10 @@ for (const action of Object.keys(HOTKEYS)) {
 }
 
 /* Keys the browser would rather use for something else. */
+/* Where the boat waits on the clamps, relative to the station: in front of the
+   bay door, just past the guide ring (see world._buildStation). */
+const BAY_PARK = [0, -9.3, 37];
+
 const SWALLOW = new Set(["Space", "Tab", "KeyC", "ControlLeft", "ShiftLeft"]);
 
 const CREAK_LINES = [
@@ -661,6 +665,8 @@ export class Submarine {
   }
 
   fire() {
+    // A photo is a moment you did not shoot anything in.
+    if (this.game.photo && this.game.photo.active) return;
     const combat = this.game.combat;
     if (combat) combat.firePrimary();
   }
@@ -848,18 +854,14 @@ export class Submarine {
     return out.fromArray(SEA.stationPos);
   }
 
-  /* Park on the ring on whichever side we came from, nose pointed at the Hull. */
+  /* Park just outside the bay's guide ring, nose to the door. The station has
+     modules out to either side now, so "whichever side you came from" could
+     put the boat inside one; the bay is the only way in, and out. */
   parkAtRing() {
     this.stationPos(_station);
-    _v1.set(this.position.x - _station.x, 0, this.position.z - _station.z);
-    if (_v1.lengthSq() < 1e-4) _v1.set(0, 0, 1);
-    _v1.normalize();
-    const ring = SEA.stationRadius + 7;
-    this.position.set(_station.x + _v1.x * ring, _station.y + 1.5, _station.z + _v1.z * ring);
+    this.position.set(_station.x, _station.y + BAY_PARK[1], _station.z + BAY_PARK[2]);
     this.velocity.set(0, 0, 0);
-    // _v1 points outward from the Hull, and the boat's nose is -Z, so facing
-    // the station means yawing toward -_v1.
-    this.yaw = Math.atan2(_v1.x, _v1.z);
+    this.yaw = 0;          // nose is -Z: straight at the bay door
     this.pitch = 0;
     this.roll = 0;
     this.yawRate = 0;
@@ -950,6 +952,10 @@ export class Submarine {
       this.applyThrust(dt);
       this.integrate(dt);
       this.resolveTerrain(dt);
+      // The station is solid now that it has modules to hit.
+      if (this.game.world && this.game.world.collideStation) {
+        this.game.world.collideStation(this.position, this.velocity, SUB.collisionRadius);
+      }
       this.updateDockPrompt(dt);
     } else {
       this.velocity.multiplyScalar(Math.pow(0.06, dt));

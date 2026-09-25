@@ -510,7 +510,7 @@ export const HOTKEYS = {
   up: ["Space"], down: ["KeyC", "ControlLeft"], boost: ["ShiftLeft"],
   lights: ["KeyF"], sonar: ["KeyR"], dock: ["KeyE"], cargo: ["Tab"],
   weapon1: ["Digit1"], weapon2: ["Digit2"], weapon3: ["Digit3"], weapon4: ["Digit4"],
-  cycle: ["KeyQ"], pause: ["Escape"], map: ["KeyM"],
+  cycle: ["KeyQ"], pause: ["Escape"], map: ["KeyM"], photo: ["KeyP"],
 };
 
 export function zoneForDepth(depth) {
@@ -522,3 +522,18 @@ export function zoneForDepth(depth) {
 export function zoneIndex(id) {
   return Math.max(0, ZONES.findIndex((z) => z.id === id));
 }
+
+/* Where the game lives and where its people are. Anything left empty is
+   simply not shown — fill these in and the menu grows the links. */
+export const SITE = {
+  // The canonical page to share. Used instead of location so a link shared
+  // from an embed (itch.io's iframe, a portal) still points somewhere real.
+  play: "https://sebby1770.github.io/mnemoquarium/",
+  // Pay-what-you-want or tip jar: an itch.io page, Ko-fi, GitHub Sponsors...
+  support: "",
+  // A Discord (or any community) invite.
+  community: "",
+  // GoatCounter count endpoint, e.g. "https://mnemoquarium.goatcounter.com/count".
+  // Analytics stay off while this is empty, and always honour Do Not Track.
+  goatcounter: "",
+};

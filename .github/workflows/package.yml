@@ -1,0 +1,28 @@
+name: Package for itch.io
+
+# Builds the zip itch.io wants (index.html at the root) and attaches it to the
+# run, so an upload never needs a local checkout. Run it by hand from the
+# Actions tab, or push a tag like v1.7.0.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the zip
+        run: python scripts/package_itch.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mnemoquarium-web
+          path: dist/*.zip
+          if-no-files-found: error

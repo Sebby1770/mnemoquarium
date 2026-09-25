@@ -10,6 +10,14 @@ import { ECONOMY, RARITY, UPGRADES } from "./config.js";
 
 export const SAVE_KEY = "mnemoquarium.deep.v1";
 
+/* Every sea keeps its own logbook. SAVE_KEY is still the last sea played (so
+   older builds and "Continue" read it unchanged); each save is mirrored into a
+   slot of its own, and a short index lists the seas you have been to. Opening
+   a friend's link, or today's sea, never touches another sea's run. */
+const SEA_PREFIX = `${SAVE_KEY}.sea.`;
+const INDEX_KEY = `${SAVE_KEY}.seas`;
+export const MAX_SEAS = 12;
+
 const VERSION = 1;
 
 /* Sanity ceilings. None of these should ever be reached by honest play; they
@@ -223,7 +231,11 @@ function migrateLandmarks(raw) {
 function migrateSettings(raw) {
   const src = isPlainObject(raw) ? raw : {};
   return {
-    sound: bool(src.sound, false),
+    /* Sound is on unless the player has turned it off themselves. Saves from
+       before this were muted by default, not by choice, so a save without
+       soundSet gets sound back. */
+    sound: src.soundSet === true ? bool(src.sound, true) : true,
+    soundSet: src.soundSet === true,
     invertY: bool(src.invertY, false),
     // The pause panel's slider is 20..300 percent; store it as a plain factor.
     sensitivity: Math.max(0.2, Math.min(3, num(src.sensitivity, 1))),
@@ -257,7 +269,7 @@ export function newProfile(phrase, seed) {
       landmarks: [],
       sighted: [],
     },
-    settings: { sound: false, invertY: false, sensitivity: 1, quality: "auto" },
+    settings: { sound: true, soundSet: false, invertY: false, sensitivity: 1, quality: "auto" },
     updated: now(),
   };
 }
@@ -339,31 +351,175 @@ export function saveProfile(profile) {
     const ls = storage();
     if (!ls) return false;
 
-    if (writeRaw(ls, JSON.stringify(snapshot))) return true;
-
-    // Quota. Sell the hold down to its best pieces and try once more; a save
-    // that loses cargo still beats a save that loses the boat.
-    snapshot.cargo = snapshot.cargo
-      .slice()
-      .sort((a, b) => b.value - a.value)
-      .slice(0, PANIC_CARGO);
-    return writeRaw(ls, JSON.stringify(snapshot));
+    // Whatever is under SAVE_KEY may be a different sea's only copy.
+    adoptLast(ls);
+    let payload = JSON.stringify(snapshot);
+    let ok = writeRaw(ls, SAVE_KEY, payload);
+    if (!ok) {
+      // Quota. Sell the hold down to its best pieces and try once more; a save
+      // that loses cargo still beats a save that loses the boat.
+      snapshot.cargo = snapshot.cargo
+        .slice()
+        .sort((a, b) => b.value - a.value)
+        .slice(0, PANIC_CARGO);
+      payload = JSON.stringify(snapshot);
+      ok = writeRaw(ls, SAVE_KEY, payload);
+    }
+    if (ok && snapshot.phrase) {
+      writeRaw(ls, seaKeyFor(snapshot.phrase), payload);
+      touchIndex(ls, snapshot);
+    }
+    return ok;
   } catch (err) {
     // Circular references, a frozen profile, a stringify that ran out of room.
     return false;
   }
 }
 
-/* Forget the dive entirely. The start screen's "erase save" ends up here. */
-export function clearProfile() {
-  memory = null;
+/* Forget a sea's run — the one given, or the last one played. The start
+   screen's "erase save" ends up here. Other seas keep theirs. */
+export function clearProfile(phrase) {
   const ls = storage();
+  let current = null;
+  if (ls) {
+    try {
+      current = migrate(ls.getItem(SAVE_KEY) || "");
+    } catch (err) {
+      current = null;
+    }
+  }
+  const target = phrase || (current && current.phrase) || (memory && memory.phrase) || "";
+  if (!phrase || (memory && memory.phrase === target)) memory = null;
   if (!ls) return;
   try {
-    ls.removeItem(SAVE_KEY);
+    if (!phrase || (current && current.phrase === target)) ls.removeItem(SAVE_KEY);
+    if (target) {
+      ls.removeItem(seaKeyFor(target));
+      writeIndex(ls, readIndex(ls).filter((e) => e.phrase !== target));
+    }
   } catch (err) {
     // Nothing to be done; the key outlives us.
   }
+}
+
+/* The run on one particular sea, or null if you have never dived it. */
+export function loadSea(phrase) {
+  const want = text(phrase, MAX_PHRASE, "");
+  if (!want) return null;
+  if (memory && memory.phrase === want) return memory;
+  const ls = storage();
+  if (!ls) return null;
+  let raw = null;
+  try {
+    raw = ls.getItem(seaKeyFor(want));
+  } catch (err) {
+    raw = null;
+  }
+  let profile = typeof raw === "string" && raw ? migrate(raw) : null;
+  if (!profile) {
+    // Saves from before slots existed live only under SAVE_KEY.
+    try {
+      const last = migrate(ls.getItem(SAVE_KEY) || "");
+      if (last && last.phrase === want) profile = last;
+    } catch (err) {
+      profile = null;
+    }
+  }
+  return profile && profile.phrase === want ? profile : null;
+}
+
+/* The seas you have been to, most recent first: [{ phrase, credits, deepest, updated }]. */
+export function listSeas() {
+  const ls = storage();
+  if (!ls) return memory && memory.phrase ? [summary(memory)] : [];
+  adoptLast(ls);
+  return readIndex(ls).sort((a, b) => b.updated - a.updated);
+}
+
+/* A save from before slots existed lives only under SAVE_KEY, and the next
+   dive on another sea would overwrite it. Give it a slot and an index entry
+   first. Cheap when there is nothing to do. */
+function adoptLast(ls) {
+  let raw = null;
+  try {
+    raw = ls.getItem(SAVE_KEY);
+  } catch (err) {
+    return;
+  }
+  if (typeof raw !== "string" || !raw) return;
+  const last = migrate(raw);
+  if (!last || !last.phrase) return;
+  const key = seaKeyFor(last.phrase);
+  let slot = null;
+  try {
+    slot = ls.getItem(key);
+  } catch (err) {
+    slot = null;
+  }
+  if (slot) return;
+  if (writeRaw(ls, key, JSON.stringify(last))) touchIndex(ls, last);
+}
+
+/* Where a sea's slot lives. FNV-1a of the phrase, so the key is short and
+   the phrase itself never has to be a valid key. */
+export function seaKeyFor(phrase) {
+  let h = 0x811c9dc5;
+  const str = String(phrase || "");
+  for (let i = 0; i < str.length; i += 1) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${SEA_PREFIX}${h.toString(16).padStart(8, "0")}`;
+}
+
+function summary(profile) {
+  return {
+    phrase: profile.phrase,
+    credits: int(profile.credits, 0, 0, MAX_CREDITS),
+    deepest: int(profile.stats && profile.stats.deepest, 0, 0, MAX_DEPTH),
+    updated: int(profile.updated, 0, 0, Number.MAX_SAFE_INTEGER),
+  };
+}
+
+function readIndex(ls) {
+  let list = [];
+  try {
+    list = JSON.parse(ls.getItem(INDEX_KEY) || "[]");
+  } catch (err) {
+    list = [];
+  }
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const e of list) {
+    if (!isPlainObject(e)) continue;
+    const phrase = text(e.phrase, MAX_PHRASE, "");
+    if (!phrase || seen.has(phrase)) continue;
+    seen.add(phrase);
+    out.push(summary({ ...e, stats: { deepest: e.deepest } }));
+    if (out.length >= MAX_SEAS * 2) break;
+  }
+  return out;
+}
+
+function writeIndex(ls, list) {
+  writeRaw(ls, INDEX_KEY, JSON.stringify(list));
+}
+
+/* Put this sea at the top of the index, and let the oldest go past MAX_SEAS. */
+function touchIndex(ls, profile) {
+  const list = readIndex(ls).filter((e) => e.phrase !== profile.phrase);
+  list.unshift(summary(profile));
+  list.sort((a, b) => b.updated - a.updated);
+  const keep = list.slice(0, MAX_SEAS);
+  for (const gone of list.slice(MAX_SEAS)) {
+    try {
+      ls.removeItem(seaKeyFor(gone.phrase));
+    } catch (err) {
+      void err;
+    }
+  }
+  writeIndex(ls, keep);
 }
 
 // ---------------------------------------------------------------- plumbing
@@ -376,9 +532,9 @@ function now() {
   }
 }
 
-function writeRaw(ls, payload) {
+function writeRaw(ls, key, payload) {
   try {
-    ls.setItem(SAVE_KEY, payload);
+    ls.setItem(key, payload);
     return true;
   } catch (err) {
     return false;
