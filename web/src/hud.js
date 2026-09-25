@@ -31,6 +31,7 @@ import {
   applyUpgrade,
   describeStats,
 } from "./progression.js";
+import { bearingOf, compassPoint, formatRange } from "./nav.js";
 
 /* Scratch, hoisted so the per-frame loops never allocate. */
 const _fwd = new THREE.Vector3();
@@ -51,10 +52,6 @@ const COMPASS_CARDINALS = {
   0: "N", 45: "NE", 90: "E", 135: "SE",
   180: "S", 225: "SW", 270: "W", 315: "NW",
 };
-const COMPASS_POINTS = [
-  "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
-  "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
-];
 
 /* Warnings, in the order they stack. Each one owns a node that is created once
    and then only toggled. */
@@ -69,6 +66,8 @@ const UPGRADE_UNITS = {
   thrust: " m/s2",
   repair: " hp/s",
   reactor: " /s",
+  scrubber: "% ink",
+  lattice: " dmg",
 };
 
 const CONTACT_POOL = 44;
@@ -93,26 +92,12 @@ function hueColor(hue, sat = 72, light = 62) {
   return `hsl(${((Number(hue) || 0) % 360 + 360) % 360} ${sat}% ${light}%)`;
 }
 
-/* three.js looks down -Z, so we simply call -Z north and the compass, the map
-   in the player's head, and the station bearing all agree. */
-function bearingOf(x, z) {
-  return (Math.atan2(x, -z) * 180 / Math.PI + 360) % 360;
-}
-
-function compassPoint(deg) {
-  const i = Math.round(((deg % 360) + 360) % 360 / 22.5) % 16;
-  return COMPASS_POINTS[i];
-}
-
+/* Bearings (see nav.js) call -Z north, so the compass, the chart, the map in
+   the player's head, and the station bearing all agree. */
 function shortDeg(delta) {
   let d = ((delta % 360) + 540) % 360 - 180;
   if (d === -180) d = 180;
   return d;
-}
-
-function formatRange(metres) {
-  const m = Math.max(0, Number(metres) || 0);
-  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
 }
 
 function formatClock(seconds) {
@@ -451,11 +436,33 @@ export class HUD {
     click(this.abandonBtn, () => this.abandonDive());
     click(this.reviveBtn, () => this.revive());
 
+    // Graphics: built here rather than in index.html, which the contract fixes.
+    const qualityRow = elem("label", "row-toggle");
+    qualityRow.appendChild(elem("span", null, "Graphics"));
+    this.selectQuality = elem("select");
+    this.selectQuality.id = "select-quality";
+    for (const [value, text] of [
+      ["auto", "Auto — trade sharpness for frame rate"],
+      ["high", "Sharp — full resolution"],
+      ["low", "Fast — reduced resolution"],
+    ]) {
+      const opt = elem("option", null, text);
+      opt.value = value;
+      this.selectQuality.appendChild(opt);
+    }
+    qualityRow.appendChild(this.selectQuality);
+    const sensRow = this.rangeSens.closest("label");
+    if (sensRow && sensRow.parentNode) sensRow.after(qualityRow);
+    else this.panels.pause.querySelector(".panel-inner")?.appendChild(qualityRow);
+    this.made.push(qualityRow);
+
     const settings = () => this.applySettings();
+    this.selectQuality.addEventListener("change", settings);
     this.toggleSound.addEventListener("change", settings);
     this.toggleInvert.addEventListener("change", settings);
     this.rangeSens.addEventListener("input", settings);
     this.timers.push(() => {
+      this.selectQuality.removeEventListener("change", settings);
       this.toggleSound.removeEventListener("change", settings);
       this.toggleInvert.removeEventListener("change", settings);
       this.rangeSens.removeEventListener("input", settings);
@@ -680,7 +687,13 @@ export class HUD {
     this.setAttr(this.compassNeedle, "needleEdge",
       edge ? (rel < 0 ? "left" : "right") : "on", "edge");
     const range = _rel.length();
-    this.setText(this.compassNeedle, "needleText", formatRange(range));
+    // Drawn by CSS beside the needle: as text inside a 2px span it wrapped
+    // one character per line straight across the tape.
+    const label = formatRange(range);
+    if (this.last.needleText !== label) {
+      this.last.needleText = label;
+      this.compassNeedle.dataset.range = label;
+    }
   }
 
   updateWeapons() {
@@ -1561,7 +1574,7 @@ export class HUD {
     this.sub.respawn();
     this.bus.emit("profile:changed", {});
     game.persist();
-    game.setMode("station");
+    game.setMode("base");
   }
 
   revive() {
@@ -1571,7 +1584,7 @@ export class HUD {
       return;
     }
     this.sub.respawn();
-    game.setMode("station");
+    game.setMode("base");
   }
 
   syncSettings() {
@@ -1579,6 +1592,7 @@ export class HUD {
     this.toggleSound.checked = !!settings.sound;
     this.toggleInvert.checked = !!settings.invertY;
     this.rangeSens.value = String(Math.round((Number(settings.sensitivity) || 1) * 100));
+    if (this.selectQuality) this.selectQuality.value = settings.quality || "auto";
   }
 
   applySettings() {
@@ -1589,7 +1603,9 @@ export class HUD {
     settings.sound = !!this.toggleSound.checked;
     settings.invertY = !!this.toggleInvert.checked;
     settings.sensitivity = clamp(Number(this.rangeSens.value) / 100, 0.2, 3);
+    settings.quality = this.selectQuality ? this.selectQuality.value : "auto";
     if (this.game.audio) this.game.audio.toggle(settings.sound);
+    if (typeof this.game.setQuality === "function") this.game.setQuality(settings.quality);
     this.bus.emit("profile:changed", {});
     this.game.persist();
   }

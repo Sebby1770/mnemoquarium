@@ -26,13 +26,28 @@ the bottom of the menu takes any phrase you like.
 | mouse | look (click once to lock) |
 | `LMB` | fire |
 | `RMB` | capture beam — hold it on a fish |
-| `4` | drift net — one throw takes a whole shoal |
 | `1` `2` `3` `4` | harpoon / torpedo / sonar lance / drift net |
+| `Q` / mouse wheel | next weapon (skips what the drydock has not fitted) |
 | `F` | floodlights |
 | `R` | sonar ping |
-| `E` | dock at the Hull |
+| `M` | sea chart |
+| `E` | dock at the Hull · aboard: use |
 | `Tab` | look in the hold |
 | `Esc` | pause |
+
+**With a controller.** Left stick thrusts, right stick looks, `RT` fires, `LT`
+holds the capture beam, `A` / `B` rise and dive, `LB` / `RB` step through the
+rack, `X` pings, `Y` switches the lamps, click the left stick to boost, d-pad up
+to dock, d-pad down to look in the hold, `Back` for the chart and `Start` to
+pause. `A` or `Start` presses the obvious button on every panel — dive, resume,
+undock, wake up — so a run can start and end without touching the mouse;
+buying things in the drydock still wants a pointer.
+
+**On a phone or tablet.** Controls appear on the first touch. Drag anywhere on
+the left to steer (push past the rim to boost), drag on the right to look, and
+hold `FIRE`, `BEAM`, `▲` and `▼` on the right. Tap a weapon in the rack to pick
+it, tap the hold gauge to look in the hold, and press and hold the dock prompt
+at the Hull. Landscape plays best.
 
 **The surface.** Keep rising and the tower breaks through into air: a sky,
 a swell that rocks the boat, and a diesel that charges the cell for free while
@@ -42,12 +57,41 @@ overhead.
 **The loop.** Dive from the Hull → hold the beam on a fish until it comes in →
 come back, sell the hold, refit → go deeper than you could last time.
 
+**The Hull.** Dock and the clamps take the boat into a moon pool, and you
+climb out and walk. `WASD` to walk, `Shift` to run, the mouse to look (click
+once), `E` to use whatever you are facing:
+
+- the **market** terminal by the door sells the hold;
+- the **drydock** console at the bow refits the boat — and the refit is on the
+  boat: armour plates, frame rings, a bigger screw in a duct, cargo pods, cell
+  racks, more lamps, a sonar dome, torpedo doors, a net drum, a repair drone,
+  a reactor glow. The gantry swings over and welds when you buy something;
+- the **manifest** in the ops room keeps the record;
+- **the tank** beside it holds two of every species you have ever brought
+  home, swimming — the original mnemoquarium, still running;
+- the **hatch** by the pool puts you back in the boat and floods the airlock.
+
+A controller walks with the sticks and uses with `A`; a thumb walks with the
+left of the screen, looks with the right, and taps the prompt.
+
 **Pressure is the gate.** The stock casing is rated to 140 m. Go much past it
 and the sea starts folding the boat shut — and everything worth real money
 lives below your rating. Buy the Pressure Casing first.
 
 **Your lamps are how they find you.** `F` kills them. Running dark is cheaper
 and much worse.
+
+**The chart.** `M` holds the boat and opens the sea chart: the floor drawn from
+the same heightfield you fly over, the Hull, the way you came since you left
+the clamps, and an amber line where the floor drops past what your casing is
+rated for — inside it you can touch bottom. Landmarks you have surveyed are
+marked and named. The ones you have not are only rumours: a dashed circle
+somewhere near the truth. The survey fee is for going there.
+
+**Graphics.** The pause panel has a *Graphics* setting. *Auto* (the default)
+watches the frame time and lowers the render resolution when the GPU cannot
+keep up, then earns it back slowly when it can. *Sharp* pins full resolution;
+*Fast* pins it low.
 
 ### The water column
 
@@ -83,6 +127,30 @@ A **gulper** is mostly mouth. A leviathan is longer than your lamps reach. A
 warm colour as the Hull's — there is no dock. A Forgetting Wraith takes a
 specimen out of your hold *and out of your record*. The Kraken of Static lives
 down there too and is not a fair fight yet.
+
+Newer, and worse: **Ink Widows** walk the kelp floor like the harmless
+octopus do, then wrap themselves over your glass, hold the boat, and black the
+window out with ink. **Razorfin** barracuda hunt the shelf in packs of three to
+five. The **Stinging Choir** drift up out of the twilight as a cloud of lit
+bells, and sting the cell flat.
+
+Two refits answer them: **Ink Scrubbers** clear the glass faster, and the
+**Shock Lattice** makes anything that grabs the hull let go, hurting.
+
+### What lives here anyway
+
+Not everything is money or teeth. Octopus work the floor and change colour
+while you watch (get close and they ink and jet away), moon jellies climb on
+their own pulse and light up in the dark, mantas fly slow circles in the blue,
+and green turtles cruise the shelf. None of them can be netted. The first good
+look at each one goes in the logbook, and the Hull pays a small sighting fee.
+
+### How it looks
+
+The underwater light is modelled per colour channel, with caustics on the
+floor and an HDR bloom. Near the surface, light shafts fan down from the sun;
+at depth your floodlights throw visible beams through the snow. Pause →
+*Graphics* trades resolution for frame rate automatically, or pins it.
 
 Between you and them: boulder clusters, coral towers up to 40 m, and curtains
 of weed thick enough to lose something in.
@@ -145,6 +213,14 @@ python3 -m http.server 8765 --directory web
 - `web/src/creatures.js` — the six, and their manners
 - `web/src/combat.js` — harpoon, torpedoes, sonar lance, the beam
 - `web/src/hud.js` — instruments, market, drydock, manifest
+- `web/src/chart.js` — the sea chart
+- `web/src/nav.js` — bearings, ranges, rumours (shared by the compass and the chart)
+- `web/src/quality.js` — the resolution governor
+- `web/src/input.js` — gamepads and touch; `web/src/stick.js` — their arithmetic
+- `web/src/frame.js` — how a real frame becomes simulation steps
+- `web/src/base.js` — the Hull on foot; `web/src/walk.js` — its collision and "use"
+- `web/src/submodel.js` — the boat's exterior, built from its upgrades
+- `web/src/ambient.js` — octopus, jellies, mantas, turtles (instanced, GPU-animated)
 - `web/ARCHITECTURE.md` — the contract every module is written against
 
 `web/engine.js` mirrors `src/mnemoquarium/model.py` rule for rule, so the

@@ -13,7 +13,10 @@
 import * as THREE from "three";
 
 import { zoneForDepth } from "./config.js";
-import { damp } from "./util.js";
+import { damp, smoothstep } from "./util.js";
+import { WATER_SUN } from "./water.js";
+
+const _camPos = new THREE.Vector3();
 
 const LEVELS = 5;
 
@@ -26,6 +29,8 @@ const GRADE = {
   twilight: { saturation: 1.02, contrast: 1.16, bloom: 0.9, lift: 0.004 },
   midnight: { saturation: 0.95, contrast: 1.18, bloom: 1.05, lift: 0.006 },
   abyss: { saturation: 0.92, contrast: 1.2, bloom: 1.15, lift: 0.008 },
+  // Inside the Hull: dry air, work lamps, and paint that should look like paint.
+  base: { saturation: 1.0, contrast: 1.06, bloom: 0.28, lift: 0.0 },
 };
 
 const FULLSCREEN_VERT = /* glsl */ `
@@ -101,6 +106,10 @@ const COMPOSITE_FRAG = /* glsl */ `
   uniform float uAberration;
   uniform float uTime;
   uniform vec2 uResolution;
+  uniform float uInk;
+  uniform vec2 uInkSeed;
+  uniform vec2 uSunUv;
+  uniform float uRays;
   varying vec2 vUv;
 
   // The same ACES fit three uses, so the grade reads like the old picture
@@ -131,6 +140,16 @@ const COMPOSITE_FRAG = /* glsl */ `
   float hash(vec2 p) {
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
   }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
 
   void main() {
     vec2 fromCentre = vUv - 0.5;
@@ -142,7 +161,52 @@ const COMPOSITE_FRAG = /* glsl */ `
     scene.b = texture2D(tScene, vUv - shift).b;
 
     vec3 c = scene + texture2D(tBloom, vUv).rgb * uBloom;
+
+    /* Light shafts: march from this pixel toward the sun's place on screen,
+       gathering the bloom (which is only the bright parts) as we go. Near the
+       surface that turns the bright window overhead into rays through the
+       water; below a hundred and fifty metres there is no light left to ray. */
+    if (uRays > 0.001) {
+      vec2 stepUv = (uSunUv - vUv) / 22.0;
+      vec2 p = vUv;
+      float decay = 1.0;
+      vec3 shafts = vec3(0.0);
+      for (int i = 0; i < 22; i += 1) {
+        p += stepUv;
+        shafts += texture2D(tBloom, clamp(p, 0.0, 1.0)).rgb * decay;
+        decay *= 0.955;
+      }
+      c += shafts * (uRays / 22.0) * vec3(0.78, 0.94, 1.0);
+
+      /* Open water has nothing to cast a shadow, so the rays also get their
+         own slow, drifting pattern: bands fanning out from the sun, broken up
+         along their length the way surface waves break them up. */
+      vec2 toSun = vUv - uSunUv;
+      toSun.x *= uResolution.x / uResolution.y;
+      float dist = length(toSun);
+      // Sampled on a circle rather than by angle, so there is no seam where
+      // the angle wraps round.
+      vec2 dir = toSun / max(dist, 1e-4);
+      float band = vnoise(dir * 16.0 + vec2(uTime * 0.12, 0.0)) * 0.65
+        + vnoise(dir * 41.0 + vec2(7.0, uTime * 0.2)) * 0.35;
+      band = pow(smoothstep(0.35, 1.0, band), 1.6);
+      float fall = exp(-dist * 0.9) * smoothstep(0.02, 0.35, dist);
+      c += vec3(0.55, 0.8, 0.95) * band * fall * uRays * 0.55;
+    }
+
     c = aces(c);
+
+    /* Ink on the glass: blotches that take the middle last as the scrubbers
+       clear it, so you get your crosshair back before your edges. */
+    if (uInk > 0.001) {
+      vec2 q = vUv * vec2(uResolution.x / uResolution.y, 1.0) * 3.2 + uInkSeed;
+      float f = vnoise(q) * 0.55 + vnoise(q * 2.3) * 0.3 + vnoise(q * 5.7) * 0.15;
+      float edge = length(fromCentre * vec2(uResolution.x / uResolution.y, 1.0));
+      float cover = uInk * 1.35 - 0.2 + edge * 0.35 * (1.0 - uInk);
+      float m = smoothstep(f - 0.05, f + 0.05, cover);
+      vec3 ink = vec3(0.025, 0.006, 0.03) + c * 0.06;
+      c = mix(c, ink, m * 0.96);
+    }
 
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c = mix(vec3(l), c, uSaturation);
@@ -217,7 +281,13 @@ export class PostFX {
       uAberration: { value: 0.0025 },
       uTime: { value: 0 },
       uResolution: { value: new THREE.Vector2(1, 1) },
+      uInk: { value: 0 },
+      uInkSeed: { value: new THREE.Vector2(0, 0) },
+      uSunUv: { value: new THREE.Vector2(0.5, 1.2) },
+      uRays: { value: 0 },
     });
+    this.lastInk = 0;
+    this.sunProbe = new THREE.Vector3();
 
     this.setSize();
   }
@@ -272,7 +342,8 @@ export class PostFX {
     const game = this.game;
     const air = game.sky && game.sky.above;
     const depth = game.sub ? game.sub.depth : 0;
-    const target = air ? GRADE.air : GRADE[zoneForDepth(depth).id] || GRADE.shelf;
+    const aboard = game.base && game.base.active;
+    const target = aboard ? GRADE.base : air ? GRADE.air : GRADE[zoneForDepth(depth).id] || GRADE.shelf;
     for (const key of Object.keys(target)) this.grade[key] = damp(this.grade[key], target[key], 1.6, dt);
     const u = this.composite.uniforms;
     u.uSaturation.value = this.grade.saturation;
@@ -280,11 +351,34 @@ export class PostFX {
     u.uLift.value = this.grade.lift;
     u.uBloom.value = this.grade.bloom;
     // The glass warps a little more the deeper it is asked to hold.
-    u.uAberration.value = air ? 0.0012 : 0.0018 + Math.min(1, depth / 1200) * 0.003;
+    u.uAberration.value = aboard ? 0.0006 : air ? 0.0012 : 0.0018 + Math.min(1, depth / 1200) * 0.003;
     // Damage shakes the picture as well as the camera.
     const shake = game.vfx ? game.vfx.shake || 0 : 0;
     u.uAberration.value += shake * 0.006;
     u.uTime.value = this.time;
+
+    // A fresh inking gets a fresh pattern.
+    const ink = game.sub ? game.sub.ink || 0 : 0;
+    if (ink > this.lastInk + 0.2) u.uInkSeed.value.set(Math.random() * 40, Math.random() * 40);
+    this.lastInk = ink;
+    u.uInk.value = game.mode === "dive" || game.mode === "paused" ? ink : 0;
+
+    /* Where the sun is on screen, and how much ray the water can carry. Shafts
+       come from the light above; looking at the floor there is little to ray. */
+    let rays = 0;
+    const cam = game.camera;
+    if (cam && !air && game.mode !== "base" && game.mode !== "station") {
+      const p = this.sunProbe.copy(WATER_SUN).multiplyScalar(500).add(cam.getWorldPosition(_camPos));
+      p.project(cam);
+      const inFront = p.z < 1;
+      if (inFront) {
+        u.uSunUv.value.set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5);
+        const off = Math.max(Math.abs(p.x), Math.abs(p.y));
+        rays = (1 - smoothstep(1.0, 2.6, off)) * (1 - smoothstep(20, 160, depth)) * 0.85;
+      }
+    }
+    this.rays = damp(this.rays || 0, rays, 3, dt);
+    u.uRays.value = this.rays;
   }
 
   render(scene, camera, dt = 0) {

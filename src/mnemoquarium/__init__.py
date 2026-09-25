@@ -3,4 +3,4 @@
 from .model import Organism, Species, Traits, World, genome_traits
 
 __all__ = ["Organism", "Species", "Traits", "World", "genome_traits"]
-__version__ = "1.4.0"
+__version__ = "1.6.0"

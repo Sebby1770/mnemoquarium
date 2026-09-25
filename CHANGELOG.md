@@ -2,6 +2,104 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.6.0] - 2026-09-24
+
+### Added
+- **The Hull, on foot.** Docking used to open a menu over the sea. Now the
+  clamps take the boat into a moon pool and you climb out: a steel hangar with
+  the boat floating under a gantry, railings, pipes, work lamps, and windows
+  onto the sea; the market terminal by the door; the drydock console at the
+  bow; a hatch back into the boat; and through a door, the ops room with the
+  manifest and **the tank**, where two of every species you have ever brought
+  home swim in a glass box. Walk with WASD (Shift runs), look with the mouse,
+  use with `E` — or the sticks and `A`, or a thumb and a tap. Terminals open
+  the old station panels with the room behind them; *Walk the Hull* or `Esc`
+  goes back. The room has its own lighting, its own reflections (a generated
+  environment map, since the addon one is not vendored) and its own grade.
+- **Refits you can see.** The boat in the drydock is built from your upgrade
+  levels: armour plates, frame rings, a bigger screw, then a duct, then side
+  pods, cargo pods, lit cell racks, more lamps, a growing sonar dome, the
+  capture ring, a longer deck gun, torpedo doors, a net drum, a repair drone, a
+  reactor glow, glass wipers and the shock lattice. Buying one swings the
+  gantry over it and welds.
+- **Marine life that is not money or teeth**: octopus that crawl the floor,
+  change colour, and ink and jet away when you come close; moon jellies that
+  climb on their own pulse and glow in the dark; mantas; green turtles. One
+  InstancedMesh per kind, animated entirely in the vertex shader — four draw
+  calls for all of them. The first good look at each pays a sighting fee.
+- **Three new hostiles.** The **Ink Widow** walks the floor like the harmless
+  octopus until it wraps itself over your glass, holds the boat nearly still
+  for a few seconds, and inks the window black. **Razorfin** barracuda hunt the
+  shelf and kelp in packs. The **Stinging Choir** is a drifting swarm of lit
+  bells from the twilight down that stings the cell.
+- **Two refits to answer them**: *Ink Scrubbers* (fully fitted, the glass
+  clears in under a third of the time, and from the middle out), and the *Shock Lattice* (anything that
+  grabs the hull is thrown off and hurt, for a little charge).
+- **Light shafts** fan down from the surface in shallow water, drifting, and
+  fade out by 160 m. **Floodlight beams** are visible in the water at depth,
+  shaded per pixel from the cone's true normal so the mesh never shows.
+- **Ink on the glass**: blotches that clear from the centre outward.
+
+### Changed
+- Reviving, and blowing the hold from the pause panel, now wake you on foot in
+  the Hull rather than at the menu.
+
+## [1.5.0] - 2026-09-24
+
+### Added
+- **A sea chart (`M`).** The key was bound but did nothing; now it holds the
+  boat and opens a chart of the whole sea: the floor shaded from the same
+  heightfield you fly over, with contours every hundred metres and a brighter
+  line at each band, the Hull, your position and heading, and the way you came
+  since you left the clamps. An amber line marks where the floor drops past
+  your casing's rating, so you can see which ground you can reach and which you
+  are buying a casing for. Surveyed landmarks are named; the rest are rumours —
+  a dashed circle somewhere near the truth, never the point, so the survey fee
+  is still for going there. Scroll zooms, drag pans, double-click finds the
+  boat. The readout gives the bearing home and to the nearest rumour.
+- **Adaptive resolution.** The scene renders into an HDR target with 4x MSAA
+  and a bloom chain at up to 2x device pixels, which a laptop GPU cannot fill
+  at 60. A governor now watches the real frame time and trades resolution for
+  it — quick to drop, slow to climb, and it will not retry a scale that just
+  failed. A *Graphics* setting on the pause panel (Auto / Sharp / Fast) pins it
+  if you would rather.
+- `Q` and the mouse wheel step through the weapon rack, skipping anything the
+  drydock has not fitted.
+- **Gamepads.** Standard mapping: sticks fly and look (radial deadzone, curved
+  response), triggers fire and hold the beam, face buttons rise, dive, ping
+  and switch the lamps, bumpers step through the rack, `Back` opens the chart,
+  `Start` pauses. `A`/`Start` press each panel's primary button, including Dive
+  on the menu, so a whole run works from the sofa except the shopping.
+- **Touch controls.** The game said it was responsive down to a phone, and it
+  was — you just could not steer. Controls now appear on the first touch: a
+  floating left-thumb joystick (push past the rim to boost), drag-to-look on
+  the right, held `FIRE`/`BEAM`/`▲`/`▼`, and four small buttons for pause,
+  chart, sonar and lamps. The weapon rack, the hold gauge and the dock prompt
+  become pressable instead of spending three more buttons on them. The pointer
+  is never locked for a touch player, because under pointer lock the browser
+  reports every touch at (0, 0). A touchscreen laptop goes back to the mouse
+  the moment the mouse clicks.
+
+### Changed
+- **Slow machines play in real time.** Frame time used to be clamped to
+  1/20 s, so anything under 20 fps ran in slow motion. A slow frame is now cut
+  into up to four steps of at most 1/20 s each: the boat still never moves far
+  enough in one step to go through a wall, and a hitch is still capped rather
+  than replayed.
+
+### Fixed
+- **Surveyed landmarks were forgotten on reload**, and paid their survey fee
+  again every session: the save migration kept a whitelist of stats and
+  `landmarks` was not on it.
+- **The drift net could not be selected.** The rack labels it `4` and the README
+  says `4`, but only `1`–`3` were bound.
+- The distance-to-the-Hull readout on the compass was written into the 2 px
+  needle and wrapped one character per line across the tape.
+- Before the first sonar ping, an empty sonar pill sat on top of the speed
+  instrument.
+- Selecting the drift net without one fitted said "no tubes fitted".
+- On narrow screens the objective line sat underneath the stacked zone plate.
+
 ## [1.4.0] - 2026-09-23
 
 ### Added
