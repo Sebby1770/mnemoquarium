@@ -64,24 +64,28 @@ const PROFILE = [
 
 /* Floor colour by depth. Sand bleaches out fast; below the kelp everything is
    silt, and below that everything is the colour of a closed eye. */
+/* Abyssal ooze is pale — it is made of shells. The dark down there comes from
+   the missing light, not from the paint, so the deep stops are a tinted silt
+   the floodlights can find rather than "the colour of a closed eye", which
+   counted the darkness twice and left even lamp-lit ground black. */
 const FLOOR_STOPS = [
   [0, 0xb8a582],
   [70, 0x94815c],
   [150, 0x5f6a4c],
-  [300, 0x46564d],
-  [520, 0x2a3844],
-  [820, 0x18212c],
-  [1100, 0x0f141f],
-  [1600, 0x0a0813],
+  [300, 0x6b6e62],
+  [520, 0x6a6b66],
+  [820, 0x66655f],
+  [1100, 0x5f5c5a],
+  [1600, 0x5a5561],
 ];
 
 /* Exposed rock on the steep faces, same depth ramp but colder and flatter. */
 const ROCK_STOPS = [
   [0, 0x9c8f77],
   [150, 0x6b6a5c],
-  [420, 0x3a4048],
-  [820, 0x1c2029],
-  [1600, 0x0c0a12],
+  [420, 0x4e5256],
+  [820, 0x46474c],
+  [1600, 0x3e3a44],
 ];
 
 function buildStops(table) {
@@ -2425,8 +2429,10 @@ export class SeaWorld {
     this.sun.color.copy(p.ambient).lerp(_c1.setHex(0xffffff), 0.55);
 
     /* The floor takes a little of the water's colour so nothing ever reads as
-       a lit object floating in an unlit sea. */
-    this.terrainMaterial.color.copy(_c1.setHex(0xffffff)).lerp(p.water, 0.22);
+       a lit object floating in an unlit sea — less of it in the deep, where
+       the lamps are the only light and the silt should look like silt. */
+    const tintIntoWater = 0.12 + 0.1 * Math.min(1, p.sunIntensity / 0.55);
+    this.terrainMaterial.color.copy(_c1.setHex(0xffffff)).lerp(p.water, tintIntoWater);
 
   }
 
@@ -2468,7 +2474,14 @@ export class SeaWorld {
     /* Density is a draw range, not a rebuild: the buffer never changes size. */
     const want = Math.round(SNOW_COUNT * (0.2 + 0.8 * clamp01(snow)));
     this.snow.geometry.setDrawRange(0, want);
-    this.snowMaterial.opacity = lerp(0.28, 0.62, clamp01(snow));
+    /* Snow is only seen because something lights it. In daylight that is the
+       sun; below the twilight it is only your lamps, so with the floods cut the
+       deep should go dark, not stay a starfield. (The plankton is what the dark
+       is for.) */
+    const sub = this.game.sub;
+    const deep = smoothstep(200, 420, sub ? sub.depth : 0);
+    const lampLit = sub && !sub.lightsOn ? 1 - deep * 0.85 : 1;
+    this.snowMaterial.opacity = lerp(0.28, 0.62, clamp01(snow)) * lampLit;
     this.snowMaterial.size = lerp(0.26, 0.4, clamp01(snow));
 
     /* One shared drift so the whole field moves like one body of water. */

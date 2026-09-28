@@ -66,7 +66,11 @@ modules disagree the one that broke this file is wrong.
 | `src/share.js` | agent | `seaLink, shareText, shareSea, shareOutcome` |
 | `src/daily.js` | agent | `dayKey, dailyPhrase` — pure |
 | `src/analytics.js` | agent | `track, pageview, attachAnalytics, shouldTrack, eventUrl` — off unless `SITE.goatcounter` |
-| `src/quality.js` | agent | `ResolutionGovernor, pixelRatioFor, SCALE, QUALITY_MODES` — no three.js |
+| `src/quality.js` | agent | `ResolutionGovernor, pixelRatioFor, effectsTier, SCALE, QUALITY_MODES` — no three.js. `effectsTier(mode, scale)` is 0/1/2 and is what optional scenery (plankton counts) reads |
+| `src/grade.js` | agent | `GRADE, gradeCurve, curveAmount, GRADE_GLSL` — the colour grade as numbers and as one curve, JS and GLSL side by side; no three.js. Contrast is applied in display space, never to linear light |
+| `src/goals.js` | agent | `CHAIN, DONE_LINES, FIRST_DESCENT_FEE, currentStep, stepIndex, objectiveFor, verbs, recommendedRefit` — the first-goal chain; every step reads persisted profile state; no three.js, no DOM |
+| `src/logbook.js` | agent | `Logbook` — `game.logbook`: polls the chain, announces steps (`goal:done`), pays first-descent fees, answers `objective()` for the HUD line, the compass diamond and the Hull's facing |
+| `src/plankton.js` | agent | `Plankton` — `game.plankton`: one `THREE.Points` of bioluminescent cells wrapped round the camera in the vertex shader; `stir(pos)` lights the water near a disturbance |
 
 ## The `game` object
 
@@ -157,6 +161,7 @@ clamped, so a slow machine plays in real time instead of slow motion.
            landmarks:[] /* surveyed landmark ids, "lm-N" */,
            sighted:[] /* ambient kinds seen: "octopus", "jelly", ... */ },
   settings: { sound:false, invertY:false, sensitivity:1, quality:"auto" },
+  log: { taught: [] /* ids said once per sea, via game.teach(id, text) */, chain: 0 },
   updated: 0,   // ms epoch
 }
 ```
@@ -443,7 +448,10 @@ read `?phrase=` from the URL, wire the start screen, construct `Game`, expose
 `combat:fire{weapon}`, `combat:hit{kind,amount,point}`, `sonar:ping{range}`,
 `station:dock{}`, `station:undock{}`, `economy:sold{credits,items}`,
 `economy:credits{credits,delta,reason}`, `economy:upgrade{id,level,cost}`,
-`profile:changed{}`.
+`profile:changed{}`, `creature:windup{creature,time}` (a strike is committed and
+lands in `time` seconds — audio hisses, the HUD points), `goal:done{id}`.
+`sub:damage` also carries `continuous` (true for the pressure trickle, which is
+batched every half second and must not crunch or flash like a blow).
 
 ## The loop the game is actually about
 

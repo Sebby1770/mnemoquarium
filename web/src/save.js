@@ -228,6 +228,20 @@ function migrateLandmarks(raw) {
   return [...seen];
 }
 
+/* The logbook block: what the game has already taught you, and how far along
+   the goal chain you are. Teaching used to live in memory, so every session —
+   Continue included — replayed the whole tutorial. Ids are short and plain so
+   a hand-edited blob cannot smuggle anything else in. */
+const MAX_TAUGHT = 64;
+
+function migrateLog(raw) {
+  const src = isPlainObject(raw) ? raw : {};
+  return {
+    taught: migrateIds(src.taught, /^[a-z0-9-]{2,24}$/, MAX_TAUGHT),
+    chain: int(src.chain, 0, 0, 64),
+  };
+}
+
 function migrateSettings(raw) {
   const src = isPlainObject(raw) ? raw : {};
   return {
@@ -270,6 +284,7 @@ export function newProfile(phrase, seed) {
       sighted: [],
     },
     settings: { sound: true, soundSet: false, invertY: false, sensitivity: 1, quality: "auto" },
+    log: { taught: [], chain: 0 },
     updated: now(),
   };
 }
@@ -300,6 +315,7 @@ export function migrate(raw) {
 
   profile.stats = migrateStats(src.stats);
   profile.settings = migrateSettings(src.settings);
+  profile.log = migrateLog(src.log);
   profile.updated = int(src.updated, 0, 0, Number.MAX_SAFE_INTEGER);
 
   return profile;

@@ -98,9 +98,40 @@ body[data-mode="paused"] #hud { opacity: 0.35; }
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(130% 105% at 50% 50%, transparent 42%, rgba(2, 4, 9, 0.72) 100%),
+    /* The composite already vignettes; this is only the cockpit's own shadow. */
+    radial-gradient(130% 105% at 50% 50%, transparent 48%, rgba(2, 4, 9, 0.38) 100%),
     radial-gradient(90% 70% at 50% 50%, transparent 40%, rgba(120, 10, 30, calc(var(--threat) * 0.5)) 100%);
   transition: background 400ms ease;
+}
+
+/* Where a bite is coming from: chevrons on a ring round the crosshair. */
+.threat-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.threat-mark {
+  position: absolute;
+  left: -15px;
+  top: -9px;
+  width: 30px;
+  height: 18px;
+  opacity: 0;
+  transform-origin: 15px 9px;
+  transition: opacity 120ms ease;
+  background: linear-gradient(to top, transparent 0 2px, rgba(255, 70, 80, 0.95) 2px);
+  clip-path: polygon(50% 0, 100% 100%, 50% 62%, 0 100%);
+  filter: drop-shadow(0 0 6px rgba(255, 40, 60, 0.9));
+}
+.threat-mark[data-show="1"] { opacity: 1; }
+.threat-mark[data-show="1"][data-kind="windup"] { animation: threat-pulse 0.22s ease-in-out infinite alternate; }
+.threat-mark[data-kind="hit"] { background: rgba(255, 150, 90, 0.9); }
+@keyframes threat-pulse { from { opacity: 0.55; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .threat-mark[data-show="1"][data-kind="windup"] { animation: none; }
 }
 
 #damage-flash {
@@ -256,6 +287,21 @@ body[data-mode="paused"] #hud { opacity: 0.35; }
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
 }
 #compass-needle[data-edge="right"]::after { left: auto; right: 5px; }
+/* Where the current goal lies: a small diamond, cyan so it never reads as the
+   amber way home. */
+.compass-goal {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -4px 0 0 -4px;
+  transform: rotate(45deg);
+  background: var(--cyan, #7fe3ff);
+  box-shadow: 0 0 8px rgba(127, 227, 255, 0.75);
+  transition: opacity 200ms ease;
+}
+.compass-goal[data-edge="left"],
+.compass-goal[data-edge="right"] { opacity: 0.55; }
 #compass::after {
   content: "";
   position: absolute;
@@ -588,9 +634,12 @@ body[data-mode="paused"] #hud { opacity: 0.35; }
   left: 50%;
   top: calc(var(--hud-gap) + 3.4rem);
   transform: translateX(-50%);
-  font-size: 0.74rem;
-  color: var(--dim);
+  max-width: min(92vw, 44rem);
+  font-size: 0.78rem;
+  color: var(--text);
   letter-spacing: 0.04em;
+  text-align: center;
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
 }
 
 #hint-dock {
@@ -990,6 +1039,13 @@ button[data-armed="1"] {
 
 /* One row per refit. Everything you need to decide is on one line: what it is,
    where it is now, where it goes, what it costs. */
+/* The refit the game recommends, pinned first with its reason. */
+.shop-row[data-recommended="1"] {
+  border-color: rgba(111, 214, 232, 0.55);
+  box-shadow: inset 3px 0 0 var(--cyan);
+}
+.shop-row[data-recommended="1"] .shop-sub { color: var(--cyan); }
+
 .shop-row {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr) auto 7.5rem;
@@ -1333,6 +1389,10 @@ body[data-input="touch"] #sonar-note { display: none; }
 /* Aboard, the dive HUD is put away — all but its toasts, which the Hull uses too. */
 body[data-mode="base"] #hud { opacity: 1; }
 body[data-mode="base"] #hud > :not(#toast) { visibility: hidden; }
+/* Docked at a terminal: the panel owns the screen, but a refusal or a sale
+   toast still has to be seen, so the HUD floats above with only that shown. */
+body[data-mode="station"] #hud { opacity: 1; z-index: 21; }
+body[data-mode="station"] #hud > :not(#toast) { visibility: hidden; }
 #base-hud[hidden] { display: none; }
 .base-plate {
   position: absolute;
@@ -1348,6 +1408,15 @@ body[data-mode="base"] #hud > :not(#toast) { visibility: hidden; }
   background: var(--panel);
 }
 .base-credits { font-family: var(--mono); font-size: 0.9rem; color: var(--amber); font-weight: 500; }
+.base-goal {
+  margin: 0.35rem 0 0;
+  max-width: 22rem;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--cyan);
+  letter-spacing: 0.03em;
+}
+.base-goal:empty { display: none; }
 .base-dot {
   position: absolute;
   left: 50%;
@@ -1508,7 +1577,9 @@ body[data-photo="1"] .touch-stick-zone { visibility: hidden !important; opacity:
 
 @media (max-height: 560px) {
   #log { display: none; }
-  #objective { display: none; }
+  /* A phone held landscape is how most people will hold it for a 3D game;
+     the goal line is the one piece of teaching that must survive here. */
+  #objective { top: calc(var(--hud-gap) + 2.2rem); font-size: 0.66rem; white-space: nowrap; }
   #compass { height: 28px; }
   .weapon { padding: 0.22rem 0.5rem; }
   .wpn-name { font-size: 0.68rem; }

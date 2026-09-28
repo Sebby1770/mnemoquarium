@@ -2,6 +2,90 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.8.0] - 2026-09-28 — The Living Deep
+
+### Fixed
+- **Everything below the kelp rendered as a black screen with white dots.**
+  The colour grade applied contrast to the picture while it was still linear
+  light, around linear 0.5 — which is sRGB 188 — so every value darker than
+  about sRGB 70 was pushed below zero and clipped. Open water past a hundred
+  metres, the floodlight beams at every depth and the lamp-lit floor past six
+  hundred all came out pure black, and only the unlit marine snow survived.
+  Contrast now runs in display space as a curve that keeps black black and
+  white white, and the deep bands are graded *softer*, with a faint ink-blue
+  lift, instead of harder. Shoals, beams and silhouettes are back.
+- **The deep floor was painted dark as well as lit dark.** Abyssal ooze is
+  pale — it is made of shells — so the silt and rock below 300 m are now a
+  tinted grey the lamps can find, and the missing light does the darkening.
+- **The floodlights stopped dead at their rated range.** three's cutoff leaves
+  nothing at the cutoff distance, so the pool of light had a hard rim at
+  exactly 34 m. The floods now fade out past their rating instead.
+- **Returning players could be served a stale mix of old and new modules** for
+  up to ten minutes after a deploy: the service worker's "network first" still
+  went through the browser's HTTP cache. It revalidates every request now, and
+  a test fails if a module is ever missing from the offline shell.
+- **Pressure made the boat sound like it was being torn apart nine times a
+  second** from the first metre past the casing, while the hull dropped one
+  point every three seconds. The pressure trickle is batched, marked as
+  continuous, and has its own voice — a long bent-metal creak that grows with
+  how far past you are — instead of the same swell that welcomed you to the
+  last band.
+- **The band swell always played the band you had just left.**
+- **A roar or an explosion blasted the pause menu and the death screen back to
+  full volume** a second after they opened. Loud events now duck through their
+  own gain on the audio clock, the voice cap is actually enforced (by
+  priority), and a limiter catches stacked peaks.
+- **The hunting chord was built and never played.** Nothing ever told the audio
+  how close the hunters were; now it does.
+- Phones and iPads most likely never started the sound: the unlock retried once,
+  on an event that does not count as a gesture for touch. It keeps listening on
+  every event that does until the context actually runs, recovers from iOS
+  interruptions, and parks the sound when the tab is hidden.
+- **Everything the game taught while you were docked went into a log nobody
+  could see**, and was pruned before you surfaced. Lines written aboard now get
+  their full life from the moment they can be read, and toasts show over the
+  station panels.
+
+### Added
+- **Bioluminescent plankton.** Below the twilight the water is full of cells
+  that flash when disturbed: the bow wave throws sparks past the glass, the
+  boat trails blue fire, and a hunter closing in the dark glitters before the
+  sonar ever paints it. Cut the lamps and the marine snow goes out with them —
+  the deep is lit by its own life. One draw call; the count follows the
+  graphics setting.
+- **Sonar paints the floor.** A ping sweeps a front of light out across the
+  seabed at a watchable speed and leaves ten-metre contour lines glowing behind
+  it for a few seconds, so for the price of some charge you can see the shape of
+  the canyon you are in.
+- **A goal, always.** A new player gets one line that says what to do next and
+  which way it is, worded for whatever they are holding — mouse, pad or touch —
+  from the first fish, home to sell, the pressure casing, the Kelp Cathedral
+  (with a bearing to where the floor actually drops), a first sighting, a first
+  survey, the second casing and the Twilight Drift. A cyan diamond on the
+  compass marks where the goal lies. Each step is read from state the save
+  already keeps, so progress survives a reload and old saves land on the right
+  step. First descents into the kelp and the twilight pay a little.
+- **Warnings before the bite.** Every hostile already paused before it struck;
+  now the pause says so. A rising hiss from the side it is coming from ends
+  exactly on the strike, a red chevron round the crosshair points at it, and a
+  blow that lands leaves a chevron pointing where it came from. Anything that
+  starts hunting you is heard turning toward you, placed left or right.
+
+### Changed
+- **Climb out of the boat facing what you came for** — the market when there is
+  something in the hold, the drydock when a casing is paid for — instead of the
+  hatch back into the boat. That terminal breathes until you walk up to it, and
+  the goal line sits under your credits.
+- **The drydock recommends a refit**, pinned first with its reason. The game has
+  always said "pressure casing first"; the casing used to sort ninth.
+- **The Hull tows new boats home for free** until the first casing. Dying while
+  you are still learning costs the hold, not the savings.
+- **Starting credits are 180**, so the first dock always offers one real
+  purchase instead of a drydock full of grey buttons.
+- Teaching is remembered per sea. Continue no longer replays the tutorial.
+- The objective line stays on screen on a phone held landscape.
+- The CSS vignette is lighter; the composite already vignettes.
+
 ## [1.7.0] - 2026-09-25
 
 ### Fixed

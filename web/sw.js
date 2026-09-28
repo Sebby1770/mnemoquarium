@@ -1,7 +1,7 @@
 /* Offline shell for the game. Bump CACHE when the shell files change.
    three.js is large, so it is cached on first visit and never re-fetched
    unless the version in the URL changes. */
-const CACHE = "mnemoquarium-deep-v1.7.1";
+const CACHE = "mnemoquarium-deep-v1.8.0";
 const SHELL = [
   "./",
   "./index.html",
@@ -46,6 +46,10 @@ const SHELL = [
   "./src/daily.js",
   "./src/analytics.js",
   "./src/photo.js",
+  "./src/grade.js",
+  "./src/goals.js",
+  "./src/logbook.js",
+  "./src/plankton.js",
 ];
 
 self.addEventListener("install", (event) => {
@@ -84,11 +88,19 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  /* Network first, and past the HTTP cache too. A plain fetch() goes through
+     the browser's own cache, and Pages serves everything with max-age=600, so
+     for ten minutes after a deploy a returning player could be handed a mix
+     of new and old modules — which is how a build breaks with no error worth
+     reading. "no-cache" revalidates every request (a cheap 304 when nothing
+     changed); the cache below is only for playing offline. */
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request, { cache: "no-cache" })
       .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        }
         return response;
       })
       .catch(() => caches.match(event.request).then((hit) => hit || caches.match("./index.html"))),

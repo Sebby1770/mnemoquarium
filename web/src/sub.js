@@ -14,6 +14,8 @@ import { clamp, clamp01, damp, lerp, smoothstep, wrapAngle, TAU } from "./util.j
 
 /* Scratch. The per-frame path allocates nothing, so every vector it needs is
    hoisted here and reused. Treat them as write-then-read-immediately. */
+// How far past the rated lamp range the floods keep fading instead of stopping.
+const FLOOD_REACH = 1.6;
 const _v1 = new THREE.Vector3();
 const _zAxis = new THREE.Vector3(0, 0, 1);
 const _v2 = new THREE.Vector3();
@@ -157,6 +159,8 @@ export class Submarine {
     this.deepestTimer = 0;
     this.pressureWarned = false;
     this.pressureCritical = false;
+    this.pressureOwed = 0;
+    this.pressureTick = 0;
     this.batteryFlat = false;
     this.lineIndex = 0;
 
@@ -217,7 +221,12 @@ export class Submarine {
     this.floodTargets = [];
     for (let i = 0; i < 2; i += 1) {
       const side = i === 0 ? -1 : 1;
-      const spot = new THREE.SpotLight(0xd8f2ff, range * 0.85, range, 0.52, 0.45, 1);
+      /* three's range cutoff multiplies by (1 - (d/distance)^4)^2, which
+         leaves nothing at the cutoff and little just before it — a pool of
+         light with a hard rim at exactly lightRange. Setting the cutoff past
+         the rated range lets the light fade out in the water the way it
+         should, and lightRange stays the distance you can read things at. */
+      const spot = new THREE.SpotLight(0xd8f2ff, range * 0.85, range * FLOOD_REACH, 0.52, 0.45, 1);
       spot.position.set(side * 1.15, -0.1, -1.9);
       spot.castShadow = false;
       const target = new THREE.Object3D();
@@ -727,7 +736,7 @@ export class Submarine {
     const range = s.lightRange || SUB.lightRangeBase;
     for (let i = 0; i < this.floods.length; i += 1) {
       const spot = this.floods[i];
-      spot.distance = range;
+      spot.distance = range * FLOOD_REACH;
       spot.intensity = this.lightsOn ? range * 0.85 : 0;
       this.floodTargets[i].position.z = -range;
     }
@@ -745,15 +754,15 @@ export class Submarine {
     if (this.game.audio) this.game.audio.sfx("click");
   }
 
-  damage(amount, source) {
+  damage(amount, source, continuous = false) {
     const amt = Number(amount) || 0;
     if (amt <= 0 || this.destroyed) return;
     if (this.docked) return;   // the clamps take the load
 
     this.hull = Math.max(0, this.hull - amt);
-    this.bus.emit("sub:damage", { amount: amt, source, hull: this.hull });
+    this.bus.emit("sub:damage", { amount: amt, source, hull: this.hull, continuous });
 
-    if (amt >= 1.2) {
+    if (amt >= 1.2 && !continuous) {
       if (this.game.vfx) this.game.vfx.screenShake(clamp01(amt / 26));
       if (this.game.audio) this.game.audio.sfx("damage");
     }
@@ -1289,13 +1298,22 @@ export class Submarine {
 
     const over = depth - rating;
     const severity = clamp01(over / 240);
-    this.damage(SUB.pressureDamage * (over / 100) * dt, "the pressure");
+    /* Batched: the trickle is paid every half second and marked continuous,
+       so the ears and the vignette can treat it as the slow thing it is. */
+    this.pressureOwed += SUB.pressureDamage * (over / 100) * dt;
+    this.pressureTick -= dt;
+    if (this.pressureTick <= 0) {
+      this.pressureTick = 0.5;
+      const owed = this.pressureOwed;
+      this.pressureOwed = 0;
+      this.damage(owed, "the pressure", true);
+    }
 
     this.creakTimer -= dt;
     if (this.creakTimer <= 0) {
       this.creakTimer = lerp(3.4, 0.85, severity);
       if (this.game.vfx) this.game.vfx.screenShake(0.18 + severity * 0.55);
-      if (this.game.audio) this.game.audio.sfx("depth", { severity });
+      if (this.game.audio) this.game.audio.sfx("creak", { severity });
       if (Math.random() < 0.45) this.game.log(this.nextLine(CREAK_LINES), "lore");
     }
   }

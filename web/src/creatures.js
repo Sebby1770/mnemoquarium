@@ -1149,6 +1149,7 @@ export class CreatureManager {
       wander: position.clone(),
       wanderTimer: 0,
       windup: 0,
+      striking: false,
       dying: 0,
       buried: false,
       lunge: 0,
@@ -1234,6 +1235,8 @@ export class CreatureManager {
     }
 
     this.threatLevel = damp(this.threatLevel, clamp01(threat), 3, dt);
+    // The hunting chord in audio.js was built and never told anything.
+    if (this.game.audio) this.game.audio.setThreat(this.threatLevel);
   }
 
   _despawn() {
@@ -1317,7 +1320,7 @@ export class CreatureManager {
       if (c.state !== "attack") {
         c.state = "attack";
         c.stateTime = 0;
-        c.windup = type.boss ? 0.9 : 0.45;
+        this._windup(c);
       }
       this._attack(c, dt, sub, distance);
     } else {
@@ -1325,15 +1328,32 @@ export class CreatureManager {
     }
   }
 
+  /* Commit to a strike: the jaws start opening now and land when the windup
+     runs out. Everything that warns the player — the rising hiss, the red
+     chevron — hangs off this one event, so it is never a lie: a windup that
+     starts is a bite that lands unless you get out of range. */
+  _windup(c) {
+    const time = c.type.boss ? 0.9 : 0.45;
+    c.windup = time;
+    c.striking = true;
+    this.game.bus.emit("creature:windup", { creature: c, time });
+  }
+
   _attack(c, dt, sub, distance) {
     const type = c.type;
     if (c.windup > 0) {
       c.windup -= dt;
+      if (c.windup > 0) return;
+    }
+    if (!c.striking) {
+      // Start the next windup early enough that the bite lands on the
+      // cooldown, so warning the player costs the animal no damage.
+      const lead = type.boss ? 0.9 : 0.45;
+      if (this.time - c.lastAttack >= type.attackCooldown - lead) this._windup(c);
       return;
     }
-    if (this.time - c.lastAttack < type.attackCooldown) return;
+    c.striking = false;
     c.lastAttack = this.time;
-    c.windup = type.boss ? 0.9 : 0.45;
 
     // The wraith would rather take a memory than a bite out of the hull.
     if (type.memoryDrain && Math.random() < 0.5 && this._forget(c)) return;

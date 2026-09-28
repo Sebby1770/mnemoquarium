@@ -499,7 +499,9 @@ export const CREATURES = {
 };
 
 export const ECONOMY = {
-  startingCredits: 150,
+  // One real purchase at the first dock, even with an empty hold (Floodlights
+  // mk1 is 160) — a drydock where every button is grey teaches nothing.
+  startingCredits: 180,
   sellBonusPerRarity: 1.0,
   trophyValueShare: 1.0,       // bounty is paid in full on the kill
   depthBonusPerKm: 0.35,       // extra fraction of value per km of capture depth

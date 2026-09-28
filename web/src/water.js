@@ -15,9 +15,12 @@
 import * as THREE from "three";
 
 import { WATER, ZONES, zoneForDepth } from "./config.js";
-import { clamp01, damp, lerp } from "./util.js";
+import { clamp01, damp, lerp, smoothstep } from "./util.js";
 
 const CACHE_KEY = "mnemoquarium-water";
+
+const PING_SPEED = 150;     // m/s the painted front travels
+const PING_LINGER = 2.6;    // seconds the contours glow once the front is out
 
 const _colour = new THREE.Color();
 const _eye = new THREE.Vector3();
@@ -62,6 +65,29 @@ const FRAGMENT_CHUNK = /* glsl */ `
       float below = -worldPos.y;
       d = below > 0.0 ? d * below / max(uCamHeight + below, 0.001) : 0.0;
     }
+    /* A sonar ping, painted onto whatever it touches: a bright front sweeping
+       out at the speed of sound in water, and ten-metre contour lines left
+       glowing behind it for a few seconds. Added before the water acts, so a
+       far wall is painted dimmer and bluer than a near one. Costs nothing
+       while no ping is live — the branch is uniform. */
+    if (uPingFade > 0.001) {
+      float r = distance(worldPos, uPing.xyz);
+      float along = (r - uPing.w) / 3.2;
+      float front = exp(-along * along);
+      /* Contours a constant pixel width, whatever the slope: a fixed band of
+         height smeared into slabs metres wide across gentle ground. */
+      float level = worldPos.y * 0.1;
+      float gap = abs(fract(level + 0.5) - 0.5);
+      #if __VERSION__ >= 300
+        float lw = max(fwidth(level), 1e-4);
+      #else
+        float lw = 0.03;
+      #endif
+      float contour = 1.0 - smoothstep(0.0, lw * 1.4, gap);
+      float behind = step(r, uPing.w) * contour * (1.0 - 0.6 * r / max(uPing.w, 1.0));
+      colour += uPingColor * (front * 1.4 + behind * 0.55) * uPingFade;
+    }
+
     d *= uMurk;
     vec3 transmit = exp(-uAbsorb * d);
     colour = colour * transmit + uScatter * (1.0 - transmit);
@@ -86,7 +112,15 @@ export class Water {
       uCausticTint: { value: new THREE.Color(0xbfe9ff) },
       uCamAir: { value: 0 },
       uCamHeight: { value: 0 },
+      // xyz origin of the last ping, w the radius its front has reached.
+      uPing: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uPingFade: { value: 0 },
+      uPingColor: { value: new THREE.Color(0x3fd6ff) },
     };
+    this.ping = { age: -1, range: 0, life: 0 };
+    this.offPing = game.bus
+      ? game.bus.on("sonar:ping", (e) => this.startPing(e && e.range))
+      : null;
 
     // Live values, eased toward the band the player is actually in.
     this.absorb = this.uniforms.uAbsorb.value.clone();
@@ -157,6 +191,9 @@ export class Water {
           uniform vec3 uCausticTint;
           uniform float uCamAir;
           uniform float uCamHeight;
+          uniform vec4 uPing;
+          uniform float uPingFade;
+          uniform vec3 uPingColor;
           varying vec3 vWaterWorldPos;
           varying float vWaterViewDepth;
           varying vec3 vWaterWorldNormal;
@@ -209,6 +246,7 @@ export class Water {
      jarring in a way fog never was, because the colour of everything changes. */
   update(dt) {
     this.time += dt;
+    this.updatePing(dt);
     this.uniforms.uWaterTime.value = this.time;
 
     const sub = this.game.sub;
@@ -272,7 +310,36 @@ export class Water {
     return (out || _colour).copy(this.uniforms.uScatter.value);
   }
 
+  /* The Sonar Array's blurb always promised to paint the floor; until now a
+     ping only lit monsters. The front moves at 150 m/s (a slowed speed of
+     sound, so you can watch it go) out to the array's range. */
+  startPing(range) {
+    const sub = this.game.sub;
+    if (!sub) return;
+    const r = Math.max(20, Number(range) || 140);
+    this.uniforms.uPing.value.set(sub.position.x, sub.position.y, sub.position.z, 0);
+    this.ping.age = 0;
+    this.ping.range = r;
+    this.ping.life = r / PING_SPEED + PING_LINGER;
+  }
+
+  updatePing(dt) {
+    const ping = this.ping;
+    if (ping.age < 0) return;
+    ping.age += dt;
+    const u = this.uniforms;
+    u.uPing.value.w = Math.min(ping.range, ping.age * PING_SPEED);
+    const fadeOut = 1 - smoothstep(ping.life - 1.2, ping.life, ping.age);
+    u.uPingFade.value = Math.max(0, fadeOut);
+    if (ping.age >= ping.life) {
+      ping.age = -1;
+      u.uPingFade.value = 0;
+    }
+  }
+
   dispose() {
+    if (this.offPing) this.offPing();
+    this.offPing = null;
     for (const material of this.materials) {
       material.onBeforeCompile = () => {};
       material.customProgramCacheKey = () => "";
