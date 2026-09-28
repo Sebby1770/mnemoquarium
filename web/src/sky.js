@@ -372,9 +372,12 @@ export class SkyAndSea {
     this.sky.position.copy(cam);
     this.sky.updateMatrixWorld();
 
-    // Nothing sits over the sea but air, and the underside is only worth
-    // drawing while there is still light enough to see it.
-    this.ocean.visible = this.above || cam.y > -900;
+    /* Nothing sits over the sea but air, and the underside is only worth
+       drawing while there is still light enough to see it: blue light keeps
+       about a thousandth of itself across 260 m of water. Below 200 m the
+       water's own backdrop takes the view overhead, and carries the glow of
+       the light still coming down — which the black underside used to hide. */
+    this.ocean.visible = this.above || cam.y > -200;
   }
 
   horizonColour(out) {

@@ -19,6 +19,40 @@ import { clamp01, damp, lerp, smoothstep } from "./util.js";
 
 const CACHE_KEY = "mnemoquarium-water";
 
+const BACKDROP_RADIUS = 1200;  // inside the camera's 1400 m far plane
+
+/* The open water behind everything. It was one flat colour in every
+   direction, so nothing could ever be silhouetted and looking up in the
+   twilight showed nothing brighter than looking sideways. Now: the horizon is
+   exactly the colour distant surfaces fade to (so there is no seam), the
+   water below goes darker, and the water above carries the light still coming
+   down from the surface — strongest through the twilight, gone by the abyss. */
+const BACKDROP_VERT = /* glsl */ `
+  varying vec3 vDir;
+  void main() {
+    vDir = normalize(position);
+    vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    gl_Position = p.xyww;
+  }`;
+
+const BACKDROP_FRAG = /* glsl */ `
+  uniform vec3 uHorizon;
+  uniform vec3 uZenith;
+  uniform vec3 uNadir;
+  varying vec3 vDir;
+  void main() {
+    vec3 d = normalize(vDir);
+    vec3 c = d.y >= 0.0
+      ? mix(uHorizon, uZenith, pow(d.y, 1.5))
+      : mix(uHorizon, uNadir, smoothstep(0.0, 0.85, -d.y));
+    // A brighter well straight overhead: the surface, a long way up.
+    c += uZenith * 1.1 * pow(max(d.y, 0.0), 6.0);
+    gl_FragColor = vec4(c, 1.0);
+  }`;
+
+const _zenith = new THREE.Color();
+const _nadir = new THREE.Color();
+
 const PING_SPEED = 150;     // m/s the painted front travels
 const PING_LINGER = 2.6;    // seconds the contours glow once the front is out
 
@@ -134,6 +168,30 @@ export class Water {
     // world ends in a visible seam. world.js also sets a sky colour; water
     // updates after it and this is the number that matches the shader.
     this.background = this.scatter.clone();
+
+    this.backdropUniforms = {
+      uHorizon: { value: new THREE.Color() },
+      uZenith: { value: new THREE.Color() },
+      uNadir: { value: new THREE.Color() },
+    };
+    this.backdrop = new THREE.Mesh(
+      new THREE.SphereGeometry(BACKDROP_RADIUS, 32, 16),
+      new THREE.ShaderMaterial({
+        vertexShader: BACKDROP_VERT,
+        fragmentShader: BACKDROP_FRAG,
+        uniforms: this.backdropUniforms,
+        side: THREE.BackSide,
+        depthWrite: false,
+        depthTest: false,
+        fog: false,
+      }),
+    );
+    this.backdrop.name = "water-backdrop";
+    this.backdrop.frustumCulled = false;
+    // Drawn first and overwritten by everything else: one screen of cheap fill.
+    this.backdrop.renderOrder = -1000;
+    this.backdrop.matrixAutoUpdate = false;
+    game.scene.add(this.backdrop);
     game.scene.background = this.background;
   }
 
@@ -303,11 +361,36 @@ export class Water {
     if (air) sky.horizonColour(this.background);
     else this.background.copy(this.uniforms.uScatter.value);
     this.game.scene.background = this.background;
+    this.updateBackdrop(depth, air);
   }
 
   /* The colour distance resolves to — the HUD and the post pass both want it. */
   horizonColour(out) {
     return (out || _colour).copy(this.uniforms.uScatter.value);
+  }
+
+  updateBackdrop(depth, air) {
+    const b = this.backdrop;
+    const aboard = this.game.base && this.game.base.active;
+    b.visible = !air && !aboard;
+    if (!b.visible) return;
+    const horizon = this.uniforms.uScatter.value;
+    /* How much brighter the water overhead is than the water beside you. In
+       the shallows the whole sea is bright; through the twilight the light
+       from above is most of what there is; by the abyss there is none. */
+    const twilight = smoothstep(200, 320, depth) * (1 - smoothstep(620, 1000, depth));
+    const lift = 2 + twilight * 6;
+    const u = this.backdropUniforms;
+    u.uHorizon.value.copy(horizon);
+    u.uZenith.value.copy(_zenith.copy(horizon).multiplyScalar(depth > 1000 ? 1 : lift));
+    u.uNadir.value.copy(_nadir.copy(horizon).multiplyScalar(0.28));
+    const eye = this.game.camera;
+    if (eye) {
+      eye.getWorldPosition(_eye);
+      b.position.copy(_eye);
+      b.updateMatrix();
+      b.updateMatrixWorld(true);
+    }
   }
 
   /* The Sonar Array's blurb always promised to paint the floor; until now a
@@ -340,6 +423,12 @@ export class Water {
   dispose() {
     if (this.offPing) this.offPing();
     this.offPing = null;
+    if (this.backdrop) {
+      if (this.backdrop.parent) this.backdrop.parent.remove(this.backdrop);
+      this.backdrop.geometry.dispose();
+      this.backdrop.material.dispose();
+      this.backdrop = null;
+    }
     for (const material of this.materials) {
       material.onBeforeCompile = () => {};
       material.customProgramCacheKey = () => "";

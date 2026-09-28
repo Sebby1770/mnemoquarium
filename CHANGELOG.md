@@ -53,6 +53,36 @@ All notable changes to **mnemoquarium** are documented here.
   sonar ever paints it. Cut the lamps and the marine snow goes out with them —
   the deep is lit by its own life. One draw call; the count follows the
   graphics setting.
+- **The twilight has a sky.** Open water used to be one flat colour in every
+  direction, so looking up at three hundred metres showed nothing brighter
+  than looking sideways, and nothing could ever stand out against anything.
+  Now the light still falling from the surface is a faint blue glow overhead,
+  strongest through the twilight and gone by the abyss, the water below you
+  goes darker, and seamounts, shoals and hunters above you rise as black
+  shapes against it. The surface's underside, which had been drawing a black
+  ceiling down to 900 m, stops at 200 m where the backdrop takes over.
+- **The Hull calls you home.** A soft two-note chirp from wherever the station
+  is, landing on its beacon light's flash, audible out to about 350 m and
+  panned so you can turn toward it. With a full hold or a low cell it calls
+  twice as often.
+- **Sonar answers.** Every contact the ping reaches replies as the painted
+  front touches it — hunters rough and doubled, big bodies low and long, the
+  Hull with its two notes, a landmark with an open fifth, the floor with a
+  fathometer's knock — each from where it is.
+- **A codex.** Every fish was already rolled with a lineage — generation,
+  inherited mutations, a rarity that can be promoted — and none of it was ever
+  collected. Each species now carries four stamps on the manifest: caught, a
+  rarer one than usual, a mutant, and one brought up from the deep of its own
+  band. None can be ground out on the shelf. A new stamp is logged; the last
+  one on a species pays for a full plate.
+- **One to a sea, at last.** Old Grey, Grandmother Tooth, the Ninefold, the
+  Tidewarden and The Sounding were always meant to be singular, but nothing
+  read the flag, so they respawned like reef sharks. Now there is never more
+  than one, and once killed they are gone from that sea for good.
+- **The Sounding swims.** The sperm whale had a body and a swim and was in no
+  spawn table. It now crosses the twilight and the midnight on its own errand,
+  and will not turn for you — it only hurts if you are in its way, or if you
+  hurt it first.
 - **Sonar paints the floor.** A ping sweeps a front of light out across the
   seabed at a watchable speed and leaves ten-metre contour lines glowing behind
   it for a few seconds, so for the price of some charge you can see the shape of
@@ -83,8 +113,16 @@ All notable changes to **mnemoquarium** are documented here.
 - **Starting credits are 180**, so the first dock always offers one real
   purchase instead of a drydock full of grey buttons.
 - Teaching is remembered per sea. Continue no longer replays the tutorial.
+- A goal step is announced the moment it happens, in whatever order — the
+  kelp's first descent at 90 m, not later at the drydock counter.
 - The objective line stays on screen on a phone held landscape.
 - The CSS vignette is lighter; the composite already vignettes.
+
+### Fixed (review)
+- Backing out of a hostile's reach and letting it close again let it skip its
+  attack cooldown and bite up to twice as often.
+- The death panel still quoted a tow fee during the free-tow period.
+- The hunting chord kept playing under the pause menu and the death screen.
 
 ## [1.7.0] - 2026-09-25
 

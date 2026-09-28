@@ -165,7 +165,7 @@ test("what the game has taught survives a save and junk is dropped", () => {
   // A save from before the logbook existed still loads, with an empty one.
   const old = JSON.parse(JSON.stringify(p));
   delete old.log;
-  assert.deepEqual(save.migrate(old).log, { taught: [], chain: 0 });
+  assert.deepEqual(save.migrate(old).log, { taught: [], chain: 0, codex: {} });
 });
 
 // ------------------------------------------------------------- effects tier
@@ -179,4 +179,95 @@ test("effects follow the graphics setting, and auto follows the resolution gover
   assert.equal(effectsTier("auto", SCALE.low + 0.1), 1);
   assert.equal(effectsTier("auto", SCALE.min), 0);
   assert.equal(effectsTier("auto", undefined), 2, "no governor yet means no reason to hold back");
+});
+
+// ---------------------------------------------------------------- logbook
+
+const { Logbook } = await import("../src/logbook.js");
+
+function logbookRig(profile) {
+  const said = [];
+  const credits = [];
+  const game = {
+    profile,
+    bus: { emit: (name, e) => said.push([name, e.id]) },
+    toast: () => {},
+    log: () => {},
+    addCredits: (n, why) => credits.push([n, why]),
+    persist: () => {},
+    mode: "dive",
+  };
+  return { book: new Logbook(game), said, credits };
+}
+
+test("a step is announced when it happens, even ahead of the chain", () => {
+  const p = freshProfile();
+  const { book, said, credits } = logbookRig(p);
+  p.stats.deepest = 96;   // into the kelp before the first fish, let alone the casing
+  book.update(1);
+  assert.deepEqual(said, [["goal:done", "kelp"]]);
+  assert.equal(credits.length, 1, "the first descent should pay once");
+  book.update(1);
+  assert.equal(said.length, 1, "announced twice");
+  p.stats.discovered.push(0);
+  book.update(1);
+  assert.deepEqual(said.at(-1), ["goal:done", "beam"]);
+});
+
+test("a veteran opening an old save hears nothing and is paid nothing", () => {
+  const p = freshProfile();
+  p.stats.discovered.push(0, 1);
+  p.stats.fishSold = 40;
+  p.upgrades.pressure = 3;
+  p.stats.deepest = 700;
+  const { book, said, credits } = logbookRig(p);
+  book.update(1);
+  assert.deepEqual(said, []);
+  assert.deepEqual(credits, []);
+});
+
+// ------------------------------------------------------------------ codex
+
+const { Ecology } = await import("../src/ecology.js");
+
+test("codex stamps cannot be ground out on the shelf", () => {
+  const eco = new Ecology("forgotten kiosk under neon rain");
+  const sp = eco.species[0];
+  let entry = goals.recordCatch(null, { rarity: sp.rarity, mutations: 0, generation: 1, depth: sp.zone.top + 1 });
+  assert.deepEqual(goals.stampsFor(entry, sp), { caught: true, rarer: false, mutant: false, deep: false });
+  entry = goals.recordCatch(entry, { rarity: "mythic", mutations: 2, generation: 4, depth: goals.deepMark(sp.zone) + 1 });
+  assert.deepEqual(goals.stampsFor(entry, sp), { caught: true, rarer: sp.rarity !== "mythic", mutant: true, deep: true });
+  const progress = goals.codexProgress({ [sp.index]: entry }, eco.species);
+  assert.equal(progress.total, eco.species.length * 4);
+  assert.ok(progress.have >= 3);
+});
+
+test("the codex survives a save and junk is dropped", () => {
+  const p = freshProfile();
+  p.log.codex = { 0: { r: 3, m: 1, g: 2, d: 120, p: 1 }, x: { r: 1 }, 400: { r: 1 }, 2: "nonsense" };
+  const back = save.migrate(JSON.parse(JSON.stringify(p)));
+  assert.deepEqual(back.log.codex, { 0: { r: 3, m: 1, g: 2, d: 120, p: 1 } });
+});
+
+test("a full plate pays once, and only when the last stamp lands", () => {
+  const eco = new Ecology("forgotten kiosk under neon rain");
+  const sp = eco.species.find((s) => s.rarity !== "mythic");
+  const p = freshProfile();
+  const handlers = {};
+  const credits = [];
+  const game = {
+    profile: p, ecology: eco, mode: "dive",
+    bus: { on: (n, fn) => { handlers[n] = fn; return () => {}; }, emit: () => {} },
+    toast: () => {}, log: () => {}, persist: () => {},
+    addCredits: (n, why) => credits.push([n, why]),
+  };
+  new Logbook(game);
+  const deep = goals.deepMark(sp.zone) + 5;
+  handlers["fish:captured"]({ item: { kind: "fish", speciesIndex: sp.index, rarity: sp.rarity, mutations: 0, generation: 1, depth: deep } });
+  handlers["fish:captured"]({ item: { kind: "fish", speciesIndex: sp.index, rarity: "mythic", mutations: 0, generation: 2, depth: 10 } });
+  assert.equal(credits.length, 0, "paid before the plate was full");
+  handlers["fish:captured"]({ item: { kind: "fish", speciesIndex: sp.index, rarity: sp.rarity, mutations: 1, generation: 3, depth: 10 } });
+  assert.deepEqual(credits, [[goals.plateBonus(sp), "full plate"]]);
+  handlers["fish:captured"]({ item: { kind: "fish", speciesIndex: sp.index, rarity: "mythic", mutations: 3, generation: 5, depth: deep } });
+  assert.equal(credits.length, 1, "paid for the same plate twice");
 });

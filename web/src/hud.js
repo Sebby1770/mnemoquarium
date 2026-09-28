@@ -32,7 +32,7 @@ import {
   describeStats,
 } from "./progression.js";
 import { bearingOf, compassPoint, formatRange } from "./nav.js";
-import { recommendedRefit } from "./goals.js";
+import { STAMPS, STAMP_LABELS, codexProgress, recommendedRefit, stampsFor } from "./goals.js";
 
 /* Scratch, hoisted so the per-frame loops never allocate. */
 const _fwd = new THREE.Vector3();
@@ -1487,6 +1487,10 @@ export class HUD {
     const seen = new Set(record.discovered || []);
     const roster = this.ecology.roster();
     const list = document.createDocumentFragment();
+    const codex = (profile.log && profile.log.codex) || {};
+    const progress = codexProgress(codex, this.ecology.species);
+    const head = elem("h3", "codex-head", `codex · ${progress.have} of ${progress.total} stamps`);
+    list.appendChild(head);
     for (const entry of roster) {
       const zone = zoneById(entry.zoneId);
       const row = elem("div", "row species-row");
@@ -1503,6 +1507,17 @@ export class HUD {
         : `${zone.name} · never in the hold`));
 
       const tail = elem("div", "row-tail");
+      // One pip per stamp: caught, a rarer one, a mutant, from deep in its band.
+      const stamps = stampsFor(codex[entry.index], this.ecology.species[entry.index]);
+      const pips = elem("span", "codex-pips", "");
+      for (const id of STAMPS) {
+        const pip = elem("span", "codex-pip", "");
+        pip.dataset.on = stamps[id] ? "1" : "0";
+        pip.title = STAMP_LABELS[id];
+        pips.appendChild(pip);
+      }
+      pips.setAttribute("aria-label", STAMPS.filter((id) => stamps[id]).map((id) => STAMP_LABELS[id]).join(", ") || "no stamps");
+      tail.appendChild(pips);
       tail.appendChild(elem("span", "row-rarity", (RARITY[entry.rarity] || RARITY.common).label));
       tail.appendChild(elem("span", "money", `${formatCredits(entry.baseValue)} base`));
 
@@ -1601,14 +1616,17 @@ export class HUD {
     else if (cause) headline = `${cause} took the rest of it`;
     this.setText(this.deadHeadline, "deadHead", headline);
 
-    const lost = Math.round((profile.credits || 0) * SUB.respawnPenalty);
+    const free = !!this.game.freeTow;
+    const lost = free ? 0 : Math.round((profile.credits || 0) * SUB.respawnPenalty);
     const parts = [];
     if (cargo.length) {
       parts.push(`${cargo.length} ${cargo.length === 1 ? "specimen" : "specimens"} went back into the dark, ${formatCredits(worth)} credits of it`);
     } else {
       parts.push("the hold was empty, at least");
     }
-    parts.push(`the Hull takes ${formatCredits(lost)} credits for the tow`);
+    parts.push(free
+      ? "the Hull tows new boats for free. it will not always"
+      : `the Hull takes ${formatCredits(lost)} credits for the tow`);
     parts.push("the sea keeps the same shape. go back down.");
     this.setText(this.deadDetail, "deadDetail", `${parts.join(" · ")}`);
   }

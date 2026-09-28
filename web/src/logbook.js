@@ -12,7 +12,10 @@
 
 import { upgradeCost } from "./progression.js";
 import { rumourCentre } from "./nav.js";
-import { CHAIN, DONE_LINES, FIRST_DESCENT_FEE, currentStep, objectiveFor, stepIndex } from "./goals.js";
+import {
+  CHAIN, DONE_LINES, FIRST_DESCENT_FEE, STAMPS, STAMP_LABELS,
+  currentStep, objectiveFor, plateBonus, recordCatch, stampsFor, stepIndex,
+} from "./goals.js";
 
 const CHECK_EVERY = 0.25;         // seconds between chain checks
 const KELP_DEPTH = 100;           // a little past the band's top, so you arrive in it
@@ -27,27 +30,71 @@ export class Logbook {
     this.timer = 0;
     this.kelp = undefined;        // lazily found: the nearest floor deep enough to count
     this.index = stepIndex(game.profile);
+    /* What was already true when this sea was opened. A step is announced
+       the moment its own condition becomes true, whatever order that is in —
+       a player can reach 90 m long before buying the casing, and the kelp's
+       "first descent" belongs to the moment they arrive, not to the drydock
+       counter afterwards. Veterans loading an old save hear nothing. */
+    this.done = new Set();
+    if (game.profile && game.profile.stats) {
+      for (const step of CHAIN) if (step.done(game.profile)) this.done.add(step.id);
+    }
     this._target = { x: 0, z: 0 };
     this._sub = { x: 0, z: 0, depth: 0 };
     this._station = { x: 0, z: 0 };
     this._rumour = { x: 0, z: 0, name: "", depth: 0 };
     if (game.profile && game.profile.log) game.profile.log.chain = this.index;
+    this.offCatch = game.bus && game.bus.on ? game.bus.on("fish:captured", (e) => this.onCatch(e && e.item)) : null;
+  }
+
+  /* Every catch is folded into its species' codex entry; a new stamp is said
+     out loud, and the last stamp on a plate pays for the whole plate. */
+  onCatch(item) {
+    const game = this.game;
+    const profile = game.profile;
+    if (!item || item.kind === "trophy" || !profile) return;
+    const index = Number(item.speciesIndex);
+    const species = game.ecology && game.ecology.species ? game.ecology.species[index] : null;
+    if (!species) return;
+    const log = profile.log || (profile.log = { taught: [], chain: 0, codex: {} });
+    const codex = log.codex || (log.codex = {});
+    const before = stampsFor(codex[index], species);
+    const entry = recordCatch(codex[index], item);
+    codex[index] = entry;
+    const after = stampsFor(entry, species);
+    const fresh = STAMPS.filter((id) => after[id] && !before[id] && id !== "caught");
+    for (const id of fresh) game.log(`codex · ${species.name}: ${STAMP_LABELS[id]}.`, "good");
+    if (!entry.p && STAMPS.every((id) => after[id])) {
+      entry.p = 1;
+      const bonus = plateBonus(species);
+      game.toast(`a full plate · ${species.name}`);
+      game.log(`every stamp on ${species.name}. the Hull pays ${bonus} for the full plate.`, "lore");
+      if (game.addCredits) game.addCredits(bonus, "full plate");
+      game.bus.emit("codex:plate", { speciesIndex: index });
+    }
+    if (fresh.length && game.persist) game.persist();
   }
 
   update(dt) {
     this.timer -= dt;
     if (this.timer > 0) return;
     this.timer = CHECK_EVERY;
-    const next = stepIndex(this.game.profile);
-    if (next === this.index) return;
-    const was = this.index;
-    this.index = next;
-    // Steps can finish together (a veteran's first sale can also be past 90 m);
-    // announce each one, in order, but only ever forward.
-    for (let i = was; i < next && i < CHAIN.length; i += 1) this.complete(CHAIN[i]);
     const profile = this.game.profile;
-    if (profile && profile.log) profile.log.chain = next;
-    if (this.game.persist) this.game.persist();
+    if (!profile || !profile.stats) return;
+    let changed = false;
+    for (const step of CHAIN) {
+      if (this.done.has(step.id) || !step.done(profile)) continue;
+      this.done.add(step.id);
+      this.complete(step);
+      changed = true;
+    }
+    const next = stepIndex(profile);
+    if (next !== this.index) {
+      this.index = next;
+      if (profile.log) profile.log.chain = next;
+      changed = true;
+    }
+    if (changed && this.game.persist) this.game.persist();
   }
 
   complete(step) {
@@ -154,6 +201,8 @@ export class Logbook {
   }
 
   dispose() {
+    if (this.offCatch) this.offCatch();
+    this.offCatch = null;
     this.kelp = undefined;
   }
 }

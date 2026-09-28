@@ -544,6 +544,9 @@ export class Game {
       this.addCredits(Math.round(bounty * ECONOMY.trophyValueShare), "bounty");
       this.log(`${creature.type.name} down. no room for the ${item ? item.label : "salvage"}, so the Hull wires ${formatCredits(bounty)} for the bounty.`, "good");
     }
+    if (creature.type.unique) {
+      this.log(`${creature.type.name} will not be back. this sea is quieter for it.`, "lore");
+    }
     if (creature.type.boss) {
       this.toast(`${creature.type.name} killed`);
       this.log("the static goes out of the water. whatever that was, it is not any more.", "lore");
@@ -559,15 +562,16 @@ export class Game {
   _onDestroyed(cause) {
     if (this.mode === "dead") return;
     this.deadCause = cause || null;
+    /* The Hull tows a new boat home for nothing until its first casing: dying
+       while you are still learning should not also push the first goal away.
+       Decided before the panel paints, because the panel reports it. */
+    this.freeTow = !(this.profile.upgrades && this.profile.upgrades.pressure >= 1);
     // The panel reads the loss off the profile, so it paints before we settle.
     this.setMode("dead");
 
     const cargo = this.profile.cargo || [];
-    /* The Hull tows a new boat home for nothing until its first casing: dying
-       while you are still learning should not also push the first goal away. */
-    const learning = !(this.profile.upgrades && this.profile.upgrades.pressure >= 1);
+    const learning = this.freeTow;
     const lost = learning ? 0 : Math.round((this.profile.credits || 0) * SUB.respawnPenalty);
-    this.freeTow = learning;
     this.profile.cargo = [];
     this.profile.credits = Math.max(0, (this.profile.credits || 0) - lost);
     this.profile.stats.deaths = (this.profile.stats.deaths || 0) + 1;

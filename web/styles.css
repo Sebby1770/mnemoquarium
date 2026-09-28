@@ -1408,6 +1408,12 @@ body[data-mode="station"] #hud > :not(#toast) { visibility: hidden; }
   background: var(--panel);
 }
 .base-credits { font-family: var(--mono); font-size: 0.9rem; color: var(--amber); font-weight: 500; }
+/* Codex stamps on the manifest rows. */
+.codex-head { margin: 0.2rem 0 0.5rem; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); font-weight: 500; }
+.codex-pips { display: inline-flex; gap: 3px; margin-right: 0.5rem; vertical-align: middle; }
+.codex-pip { width: 7px; height: 7px; border-radius: 50%; border: 1px solid rgba(111, 214, 232, 0.5); }
+.codex-pip[data-on="1"] { background: var(--cyan); box-shadow: 0 0 6px rgba(111, 214, 232, 0.6); }
+
 .base-goal {
   margin: 0.35rem 0 0;
   max-width: 22rem;

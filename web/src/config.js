@@ -60,7 +60,7 @@ export const ZONES = [
     snow: 0.55,
     valueMultiplier: 3.2,
     hostileBudget: 4,
-    hostiles: [["shark", 0.18], ["squid", 0.24], ["angler", 0.12], ["lamprey", 0.14], ["trapjaw", 0.12], ["grandmother", 0.1], ["inkwidow", 0.18], ["choir", 0.12]],
+    hostiles: [["shark", 0.18], ["squid", 0.24], ["angler", 0.12], ["lamprey", 0.14], ["trapjaw", 0.12], ["grandmother", 0.1], ["inkwidow", 0.18], ["choir", 0.12], ["sperm", 0.05]],
     blurb: "the last of the light, spending itself",
   },
   {
@@ -74,7 +74,7 @@ export const ZONES = [
     snow: 0.8,
     valueMultiplier: 6.0,
     hostileBudget: 4,
-    hostiles: [["squid", 0.22], ["angler", 0.18], ["leviathan", 0.12], ["trapjaw", 0.16], ["gulper", 0.16], ["ninefold", 0.1], ["grandmother", 0.06], ["choir", 0.18], ["inkwidow", 0.1]],
+    hostiles: [["squid", 0.22], ["angler", 0.18], ["leviathan", 0.12], ["trapjaw", 0.16], ["gulper", 0.16], ["ninefold", 0.1], ["grandmother", 0.06], ["choir", 0.18], ["inkwidow", 0.1], ["sperm", 0.06]],
     blurb: "no light but the light that wants you closer",
   },
   {

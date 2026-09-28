@@ -190,3 +190,62 @@ export function recommendedRefit(profile, stats, next) {
   }
   return pick("pressure", "the next band down is the next casing");
 }
+
+/* ------------------------------------------------------------------ codex */
+
+/* The manifest used to be caught-or-not, five rows. But every fish is rolled
+   with a lineage — a generation, inherited mutations, a rarity that can be
+   promoted above its species' usual — and all of it was saved and then
+   never collected. Four stamps per species, none of which can be ground out
+   on the shelf: caught at all, a rarer one than usual, a mutant, and one
+   brought up from the bottom of its own band. */
+export const STAMPS = ["caught", "rarer", "mutant", "deep"];
+export const STAMP_LABELS = { caught: "caught", rarer: "a rarer one", mutant: "a mutant", deep: "from the deep of its band" };
+const RARITY_ORDER = ["common", "uncommon", "rare", "mythic"];
+
+/* How deep in its band a catch has to be to earn the deep stamp. */
+export function deepMark(zone) {
+  const top = Number(zone && zone.top) || 0;
+  const bottom = Number(zone && zone.bottom);
+  const span = Number.isFinite(bottom) && bottom > top ? bottom - top : 300;
+  return top + span * 0.6;
+}
+
+/* Fold one catch into its species' codex entry. Mutates and returns entry. */
+export function recordCatch(entry, item) {
+  const e = entry || { r: 0, m: 0, g: 0, d: 0, p: 0 };
+  const tier = RARITY_ORDER.indexOf(item && item.rarity);
+  if (tier >= 0) e.r |= 1 << tier;
+  e.m = Math.max(e.m, Math.floor(Number(item && item.mutations) || 0));
+  e.g = Math.max(e.g, Math.floor(Number(item && item.generation) || 0));
+  e.d = Math.max(e.d, Math.round(Number(item && item.depth) || 0));
+  return e;
+}
+
+export function stampsFor(entry, species) {
+  const out = { caught: false, rarer: false, mutant: false, deep: false };
+  if (!entry || !entry.r) return out;
+  out.caught = true;
+  const base = Math.max(0, RARITY_ORDER.indexOf(species && species.rarity));
+  out.rarer = (entry.r >> (base + 1)) > 0;
+  out.mutant = entry.m >= 1;
+  out.deep = entry.d >= deepMark(species && species.zone);
+  return out;
+}
+
+export function stampCount(entry, species) {
+  const s = stampsFor(entry, species);
+  return STAMPS.reduce((n, id) => n + (s[id] ? 1 : 0), 0);
+}
+
+export function codexProgress(codex, species) {
+  const list = species || [];
+  let have = 0;
+  for (const sp of list) have += stampCount(codex && codex[sp.index], sp);
+  return { have, total: list.length * STAMPS.length };
+}
+
+/* A species with every stamp pays once: a full plate is worth four of it. */
+export function plateBonus(species) {
+  return Math.round((Number(species && species.baseValue) || 0) * 4);
+}
