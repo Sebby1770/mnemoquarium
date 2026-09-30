@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Play Mnemoquarium — The Deep</title>
+    <meta name="description" content="Dive a first-person submarine through a sea grown from a phrase. Net fish, sell them at the Hull, refit, and go deeper than the things down there would like.">
+    <meta name="theme-color" content="#03060c">
+    <link rel="canonical" href="https://sebby1770.github.io/mnemoquarium/play.html">
+    <!-- What a shared link looks like in a chat, a feed or a search result. -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Mnemoquarium">
+    <meta property="og:title" content="Mnemoquarium: The Deep — type any words, dive the sea they grow">
+    <meta property="og:description" content="A free submarine game in your browser. Every word becomes a species. Net what lives down there, walk your station, refit your boat, and go deeper than the things below would like.">
+    <meta property="og:url" content="https://sebby1770.github.io/mnemoquarium/play.html">
+    <meta property="og:image" content="https://sebby1770.github.io/mnemoquarium/press/og.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="An underwater station with a lit dome and portholes, under the title Mnemoquarium: The Deep">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Mnemoquarium: The Deep">
+    <meta name="twitter:description" content="Type any words. Dive the sea they grow. Free in your browser.">
+    <meta name="twitter:image" content="https://sebby1770.github.io/mnemoquarium/press/og.jpg">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css">
+    <script type="importmap">
+      { "imports": { "three": "./vendor/three.module.min.js" } }
+    </script>
+    <!-- The 2D lab's engine is the source of truth for the genetics. It is a
+         classic script, so it runs before any deferred module below. -->
+    <script src="./engine.js"></script>
+  </head>
+  <body class="deep" data-mode="boot" data-zone="shelf">
+    <canvas id="view" aria-label="Submarine viewport"></canvas>
+
+    <!-- ---------------------------------------------------------------- HUD -->
+    <div id="hud" aria-live="polite">
+      <div id="vignette"></div>
+      <div id="damage-flash"></div>
+
+      <div id="crosshair" data-state="idle">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle id="crosshair-ring" cx="32" cy="32" r="18"></circle>
+          <circle id="crosshair-progress" cx="32" cy="32" r="18"></circle>
+          <path d="M32 6v9M32 49v9M6 32h9M49 32h9"></path>
+          <circle id="crosshair-dot" cx="32" cy="32" r="1.6"></circle>
+        </svg>
+        <p id="reticle-label"></p>
+      </div>
+
+      <div id="contacts" aria-hidden="true"></div>
+
+      <header id="topbar">
+        <div id="compass">
+          <div id="compass-strip"></div>
+          <span id="compass-needle"></span>
+        </div>
+        <div id="zone-plate">
+          <strong id="readout-zone">Sunlit Shelf</strong>
+          <span id="readout-zone-blurb"></span>
+        </div>
+        <div id="credit-plate">
+          <span class="label">credits</span>
+          <strong id="readout-credits">0</strong>
+        </div>
+      </header>
+
+      <div id="warnings"></div>
+
+      <section id="gauges">
+        <div class="gauge" id="gauge-hull" data-key="hull">
+          <span class="gauge-label">hull</span>
+          <div class="gauge-track"><div class="gauge-fill"></div></div>
+          <span class="gauge-value">100</span>
+        </div>
+        <div class="gauge" id="gauge-battery" data-key="battery">
+          <span class="gauge-label">cell</span>
+          <div class="gauge-track"><div class="gauge-fill"></div></div>
+          <span class="gauge-value">100</span>
+        </div>
+        <div class="gauge" id="gauge-cargo" data-key="cargo">
+          <span class="gauge-label">hold</span>
+          <div class="gauge-track"><div class="gauge-fill"></div></div>
+          <span class="gauge-value">0/6</span>
+        </div>
+      </section>
+
+      <section id="instruments">
+        <div class="instrument"><span class="label">depth</span><strong id="readout-depth">0 m</strong></div>
+        <div class="instrument"><span class="label">speed</span><strong id="readout-speed">0.0</strong></div>
+        <div class="instrument"><span class="label">rated</span><strong id="readout-rating">140 m</strong></div>
+        <div class="instrument"><span class="label">floor</span><strong id="readout-floor">— m</strong></div>
+      </section>
+
+      <section id="weapon-rack"></section>
+
+      <div id="sonar-note"></div>
+      <ul id="log" class="log"></ul>
+      <div id="toast"></div>
+      <div id="objective"></div>
+      <p id="hint-dock" hidden>Hold <kbd>E</kbd> to dock at the Hull</p>
+    </div>
+
+    <!-- ------------------------------------------------------------- panels -->
+    <div id="panel-start" class="panel screen" data-open="true">
+      <div class="panel-inner menu">
+        <p class="eyebrow"><a href="./">Mnemoquarium</a> / the game</p>
+        <h1>The&nbsp;Deep</h1>
+        <p class="lede">A sea a kilometre deep, and a submarine with a hold to fill. Net what lives down there, sell it at the Hull, and buy a casing that can take you lower than the last one could.</p>
+
+        <div class="menu-actions">
+          <button type="button" class="primary big" id="start-begin">Dive</button>
+          <button type="button" class="big" id="start-continue" hidden>Continue</button>
+          <button type="button" id="start-new" hidden>Start a new sea</button>
+        </div>
+
+        <section class="sea-card" id="start-sea">
+          <header class="sea-head">
+            <div>
+              <span class="label">your sea</span>
+              <strong id="start-summary">&nbsp;</strong>
+            </div>
+            <div class="sea-links">
+              <button type="button" class="linkish" id="start-daily">today's sea</button>
+              <button type="button" class="linkish" id="start-reroll">try another</button>
+              <button type="button" class="linkish" id="start-share">share</button>
+            </div>
+          </header>
+          <div id="start-roster" class="roster"></div>
+        </section>
+
+        <div class="menu-extras">
+          <details id="start-controls">
+            <summary>Controls</summary>
+            <p class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> thrust · <kbd>Space</kbd> rise · <kbd>C</kbd> dive · <kbd>Shift</kbd> boost · mouse look · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> capture beam · <kbd>1</kbd>–<kbd>4</kbd> weapons · <kbd>Q</kbd> / wheel next weapon · <kbd>F</kbd> lights · <kbd>R</kbd> sonar · <kbd>M</kbd> chart · <kbd>P</kbd> photo · <kbd>E</kbd> dock · <kbd>Tab</kbd> hold · <kbd>Esc</kbd> pause</p>
+          </details>
+
+          <details id="start-seas" hidden>
+            <summary>Your seas</summary>
+            <div id="start-seas-list" class="seas-list"></div>
+          </details>
+
+          <details id="start-advanced">
+            <summary>Use your own words</summary>
+            <p class="hint">Every word becomes a species — its colour, its size, its temper, its price. The same words always grow the same sea.</p>
+            <form id="start-form">
+              <label class="field">
+                <span>Phrase</span>
+                <input id="start-phrase" type="text" value="forgotten kiosk under neon rain" autocomplete="off" spellcheck="false">
+              </label>
+              <button type="submit" id="start-custom">Grow this one</button>
+            </form>
+          </details>
+        </div>
+
+        <p class="tiny"><a href="./">website</a> · <a href="./guide.html" target="_blank" rel="noopener">field guide</a> · <a href="https://github.com/Sebby1770/mnemoquarium">source</a><span id="start-support-wrap" hidden> · <a id="start-support" target="_blank" rel="noopener">support the game</a></span><span id="start-community-wrap" hidden> · <a id="start-community" target="_blank" rel="noopener">join the crew</a></span> · <button type="button" class="linkish" id="start-reset">erase this sea's save</button></p>
+        <p class="tiny" id="start-note" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <div id="panel-station" class="panel screen" hidden>
+      <div class="panel-inner wide">
+        <header class="station-head">
+          <div>
+            <p class="eyebrow">the hull · tender station</p>
+            <h2>Docked</h2>
+          </div>
+          <div class="station-credits"><span class="label">credits</span><strong id="station-credits">0</strong></div>
+        </header>
+        <nav class="tabs" id="station-tabs">
+          <button type="button" data-tab="market" class="active">Market</button>
+          <button type="button" data-tab="drydock">Drydock</button>
+          <button type="button" data-tab="log">Manifest</button>
+        </nav>
+        <div class="tab-body" id="station-market" data-tab="market">
+          <div class="market-head">
+            <p class="hint" id="market-summary">Nothing in the hold.</p>
+            <button type="button" class="primary" id="btn-sell-all">Sell everything</button>
+          </div>
+          <div id="market-list" class="stack"></div>
+        </div>
+        <div class="tab-body" id="station-drydock" data-tab="drydock" hidden>
+          <div id="shop-list" class="stack"></div>
+        </div>
+        <div class="tab-body" id="station-log" data-tab="log" hidden>
+          <div id="station-stats" class="stats"></div>
+          <div id="station-species" class="stack"></div>
+        </div>
+        <footer class="station-foot">
+          <button type="button" class="primary" id="btn-undock">Flood the airlock · dive</button>
+          <p class="hint">Repairs and recharge are free while you sit on the clamps.</p>
+        </footer>
+      </div>
+    </div>
+
+    <div id="panel-cargo" class="panel drawer" hidden>
+      <div class="panel-inner">
+        <h2>Hold</h2>
+        <div id="cargo-list" class="stack"></div>
+        <p class="hint">Release <kbd>Tab</kbd> to close. Cargo sells at the Hull.</p>
+      </div>
+    </div>
+
+    <div id="panel-pause" class="panel screen" hidden>
+      <div class="panel-inner">
+        <h2>Held at depth</h2>
+        <div id="pause-stats" class="stats"></div>
+        <div class="start-actions">
+          <button type="button" class="primary" id="btn-resume">Resume</button>
+          <button type="button" id="btn-abandon">Surface (lose the hold)</button>
+        </div>
+        <label class="row-toggle"><input type="checkbox" id="toggle-sound"> Sound</label>
+        <label class="row-toggle"><input type="checkbox" id="toggle-invert"> Invert mouse Y</label>
+        <label class="row-toggle"><span>Look sensitivity</span><input type="range" id="range-sens" min="20" max="300" value="100"></label>
+      </div>
+    </div>
+
+    <div id="panel-dead" class="panel screen" hidden>
+      <div class="panel-inner">
+        <p class="eyebrow">hull failure</p>
+        <h2 id="dead-headline">The sea gets the hold</h2>
+        <p id="dead-detail" class="lede"></p>
+        <div class="start-actions">
+          <button type="button" class="primary" id="btn-revive">Wake up on the clamps</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="loading" class="panel screen" hidden>
+      <div class="panel-inner">
+        <h2 id="loading-text">Growing the sea…</h2>
+        <div class="bar"><div id="loading-bar"></div></div>
+      </div>
+    </div>
+
+    <noscript>
+      <div class="panel screen"><div class="panel-inner"><h2>This one needs JavaScript and WebGL.</h2><p>The sea will not flood without them.</p></div></div>
+    </noscript>
+
+    <script type="module" src="./src/main.js"></script>
+    <script>
+      if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(() => {});
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -30,6 +30,8 @@ import { AmbientLife } from "./ambient.js";
 import { Base } from "./base.js";
 import { PhotoMode } from "./photo.js";
 import { attachAnalytics } from "./analytics.js";
+import { Logbook } from "./logbook.js";
+import { Plankton } from "./plankton.js";
 
 const SAVE_INTERVAL = 4;       // seconds between debounced writes
 
@@ -96,6 +98,8 @@ export class Game {
     }
     this.world = new SeaWorld(this);
     this.vfx = new VFX(this);
+    // Needs the water's absorption uniform, so it comes after the water model.
+    this.plankton = new Plankton(this);
     this.sub = new Submarine(this);
     this.fish = new FishManager(this);
     this.creatures = new CreatureManager(this);
@@ -104,6 +108,8 @@ export class Game {
     this.combat = new Combat(this);
     this.audio = new Audio(this);
     this.hud = new HUD(this);
+    // After the HUD, which reads it for the objective line and the compass.
+    this.logbook = new Logbook(this);
     this.chart = new Chart(this);
     this.input = new InputDevices(this);
     // The inside of the Hull: its own scene, drawn while you are aboard.
@@ -122,7 +128,6 @@ export class Game {
     /* ---- bookkeeping ---------------------------------------------------- */
     this.dirty = false;
     this.saveTimer = 0;
-    this.taught = Object.create(null);
     this.deadCause = null;
 
     this._bind();
@@ -214,16 +219,8 @@ export class Game {
   _startSound() {
     const audio = this.audio;
     if (!audio || !this.profile.settings || !this.profile.settings.sound) return;
+    // Audio keeps its own unlock armed until the context really runs.
     audio.start();
-    const retry = () => {
-      window.removeEventListener("pointerdown", retry, true);
-      window.removeEventListener("keydown", retry, true);
-      this._soundRetry = null;
-      if (this.profile.settings.sound && !this.disposed) audio.start();
-    };
-    this._soundRetry = retry;
-    window.addEventListener("pointerdown", retry, true);
-    window.addEventListener("keydown", retry, true);
   }
 
   frame() {
@@ -246,7 +243,9 @@ export class Game {
     this.ambient.update(dt);
     this.water.update(dt);
     this.vfx.update(dt);
+    this.plankton.update(dt);
     this.audio.update(dt);
+    this.logbook.update(dt);
     this.hud.update(dt);
     this.chart.update(dt);
     this.base.update(dt);
@@ -347,9 +346,8 @@ export class Game {
 
     // The band you cannot survive yet is the whole plot.
     const rating = this.stats.pressureRating;
-    if (zone.bottom > rating && !this.taught[`gate-${zone.id}`]) {
-      this.taught[`gate-${zone.id}`] = true;
-      this.log(`${zone.name}: ${zone.blurb}. rated to ${formatDepth(rating)} — a deeper casing is the only way further down.`, "warn");
+    if (zone.bottom > rating) {
+      this.teach(`gate-${zone.id}`, `${zone.name}: ${zone.blurb}. rated to ${formatDepth(rating)} — a deeper casing is the only way further down.`, "warn");
     }
   }
 
@@ -453,9 +451,27 @@ export class Game {
   }
 
   _teachDrydock() {
-    if (this.taught.drydock) return;
-    this.taught.drydock = true;
-    this.log("the drydock is the other tab. pressure casing first — everything worth money is below your rating.", "info");
+    // A toast, not a log line: the log is hidden while you are docked.
+    if (this.teach("drydock", "the drydock is the other tab. pressure casing first — everything worth money is below your rating.", "info")) {
+      this.toast("pressure casing first — the drydock has it");
+    }
+  }
+
+  /* Say something once per sea, ever. Returns false if it has been said. The
+     ids live in the save, so Continue no longer replays the whole tutorial. */
+  teach(id, text, kind = "info") {
+    const log = this.profile.log || (this.profile.log = { taught: [], chain: 0 });
+    if (!Array.isArray(log.taught)) log.taught = [];
+    if (log.taught.includes(id)) return false;
+    log.taught.push(id);
+    if (text) this.log(text, kind);
+    this.dirty = true;
+    return true;
+  }
+
+  taught(id) {
+    const log = this.profile.log;
+    return !!(log && Array.isArray(log.taught) && log.taught.includes(id));
   }
 
   buyUpgrade(id) {
@@ -501,9 +517,8 @@ export class Game {
     }
     this.dirty = true;
 
-    if (!this.taught.hold && this.sub.cargoFull) {
-      this.taught.hold = true;
-      this.log("the hold is full. it is only money once it is on the clamps.", "warn");
+    if (this.sub.cargoFull) {
+      this.teach("hold", "the hold is full. it is only money once it is on the clamps.", "warn");
     }
   }
 
@@ -529,6 +544,9 @@ export class Game {
       this.addCredits(Math.round(bounty * ECONOMY.trophyValueShare), "bounty");
       this.log(`${creature.type.name} down. no room for the ${item ? item.label : "salvage"}, so the Hull wires ${formatCredits(bounty)} for the bounty.`, "good");
     }
+    if (creature.type.unique) {
+      this.log(`${creature.type.name} will not be back. this sea is quieter for it.`, "lore");
+    }
     if (creature.type.boss) {
       this.toast(`${creature.type.name} killed`);
       this.log("the static goes out of the water. whatever that was, it is not any more.", "lore");
@@ -544,11 +562,16 @@ export class Game {
   _onDestroyed(cause) {
     if (this.mode === "dead") return;
     this.deadCause = cause || null;
+    /* The Hull tows a new boat home for nothing until its first casing: dying
+       while you are still learning should not also push the first goal away.
+       Decided before the panel paints, because the panel reports it. */
+    this.freeTow = !(this.profile.upgrades && this.profile.upgrades.pressure >= 1);
     // The panel reads the loss off the profile, so it paints before we settle.
     this.setMode("dead");
 
     const cargo = this.profile.cargo || [];
-    const lost = Math.round((this.profile.credits || 0) * SUB.respawnPenalty);
+    const learning = this.freeTow;
+    const lost = learning ? 0 : Math.round((this.profile.credits || 0) * SUB.respawnPenalty);
     this.profile.cargo = [];
     this.profile.credits = Math.max(0, (this.profile.credits || 0) - lost);
     this.profile.stats.deaths = (this.profile.stats.deaths || 0) + 1;
@@ -556,7 +579,9 @@ export class Game {
 
     this.bus.emit("profile:changed", {});
     if (this.audio) this.audio.sfx("alarm");
-    this.log(`the hull goes. ${cargo.length} specimens back into the dark, ${formatCredits(lost)} credits for the tow.`, "bad");
+    this.log(learning
+      ? `the hull goes. ${cargo.length} specimens back into the dark. the Hull tows new boats for free. it will not always.`
+      : `the hull goes. ${cargo.length} specimens back into the dark, ${formatCredits(lost)} credits for the tow.`, "bad");
     this.persist(true);
   }
 
@@ -614,13 +639,9 @@ export class Game {
     window.removeEventListener("orientationchange", this._onResize);
     document.removeEventListener("visibilitychange", this._onVisibility);
     window.removeEventListener("pagehide", this._onUnload);
-    if (this._soundRetry) {
-      window.removeEventListener("pointerdown", this._soundRetry, true);
-      window.removeEventListener("keydown", this._soundRetry, true);
-    }
 
     if (this.offAnalytics) this.offAnalytics();
-    for (const system of [this.photo, this.base, this.input, this.chart, this.hud, this.audio, this.combat, this.ambient, this.landmarks, this.creatures, this.fish, this.sub, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
+    for (const system of [this.photo, this.base, this.input, this.chart, this.logbook, this.hud, this.audio, this.combat, this.ambient, this.landmarks, this.creatures, this.fish, this.sub, this.plankton, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
       try {
         if (system && system.dispose) system.dispose();
       } catch (err) {

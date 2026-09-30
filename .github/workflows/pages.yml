@@ -20,6 +20,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify before publishing
+        run: |
+          node --test "web/tests/*.test.mjs"
+          node --experimental-vm-modules web/tests/parse-modules.mjs
+          node --check web/sw.js
+          PYTHONPATH=src python -m unittest discover -s tests
+      - name: Stamp the published build
+        env:
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          Path("web/build.json").write_text(json.dumps({
+              "commit": os.environ["BUILD_SHA"],
+              "published": datetime.now(timezone.utc).isoformat(),
+          }) + "\n")
+          PY
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

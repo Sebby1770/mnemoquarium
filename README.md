@@ -1,6 +1,6 @@
 # Mnemoquarium
 
-**Play it:** [https://sebby1770.github.io/mnemoquarium/](https://sebby1770.github.io/mnemoquarium/)
+**Website:** [Mnemoquarium](https://sebby1770.github.io/mnemoquarium/) · **[Play](https://sebby1770.github.io/mnemoquarium/play.html)** · **[Field guide](https://sebby1770.github.io/mnemoquarium/guide.html)**
 
 A first-person submarine game in a sea grown from words. Every word becomes a
 species down there — its colour, its size, its temper, its price. Net what you
@@ -71,6 +71,11 @@ overhead.
 **The loop.** Dive from the Hull → hold the beam on a fish until it comes in →
 come back, sell the hold, refit → go deeper than you could last time.
 
+**There is always a next thing.** The line under the compass says what it is
+and which way — the first fish, home to sell, the casing, the Kelp Cathedral,
+a sighting, a survey, the Twilight Drift — worded for a mouse, a pad or a
+thumb, and a cyan diamond on the compass marks where it lies.
+
 **The Hull.** Dock and the clamps take the boat into a moon pool, and you
 climb out and walk. `WASD` to walk, `Shift` to run, the mouse to look (click
 once), `E` to use whatever you are facing:
@@ -93,7 +98,17 @@ and the sea starts folding the boat shut — and everything worth real money
 lives below your rating. Buy the Pressure Casing first.
 
 **Your lamps are how they find you.** `F` kills them. Running dark is cheaper
-and much worse.
+and much worse — and below the twilight it is also the best way to see the
+sea: the water is full of plankton that flashes when anything moves through
+it, so with the lamps off the boat trails blue fire and a hunter coming for you
+glitters before it arrives.
+
+**Sonar paints the floor.** `R` sends a front of light sweeping out across the
+seabed and leaves the contours glowing behind it for a few seconds.
+
+**Every bite is announced.** A hunter that commits to a strike hisses from the
+side it is coming from, and a red chevron round the crosshair points at it,
+half a second before it lands.
 
 **The chart.** `M` holds the boat and opens the sea chart: the floor drawn from
 the same heightfield you fly over, the Hull, the way you came since you left

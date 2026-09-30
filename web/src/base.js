@@ -613,6 +613,7 @@ export class Base {
       <div class="base-plate">
         <span class="label">the hull · tender station</span>
         <strong class="base-credits"></strong>
+        <p class="base-goal"></p>
       </div>
       <div class="base-dot"></div>
       <button type="button" class="base-prompt" hidden></button>
@@ -626,6 +627,9 @@ export class Base {
     this.hudPrompt = root.querySelector(".base-prompt");
     this.hudFitted = root.querySelector(".base-fitted");
     this.hudHelp = root.querySelector(".base-help");
+    this.hudGoal = root.querySelector(".base-goal");
+    this.goalId = null;
+    this.goalTimer = 0;
     this.onPrompt = (e) => { e.preventDefault(); this.interact(); };
     this.hudPrompt.addEventListener("click", this.onPrompt);
 
@@ -715,7 +719,12 @@ export class Base {
     this.active = true;
     this.pos.x = SPAWN.x;
     this.pos.z = SPAWN.z;
-    this.yaw = SPAWN.yaw;
+    /* Climb out facing what you came for. The old spawn looked straight at the
+       hatch back into the boat, with the market off the left edge of the
+       screen and the drydock off the right. */
+    this.goalId = this._goalTerminal();
+    const goal = this.goalId && this.items.find((item) => item.id === this.goalId);
+    this.yaw = goal ? Math.atan2(-(goal.x - SPAWN.x), -(goal.z - SPAWN.z)) : SPAWN.yaw;
     this.pitch = -0.08;
     this._rebuildSub();
     this.tankKey = "?";
@@ -772,6 +781,12 @@ export class Base {
     this._updateSparks(dt);
     this._updateGantry(dt);
 
+    this.goalTimer -= dt;
+    if (this.goalTimer <= 0) {
+      this.goalTimer = 0.5;
+      this._writeGoal();
+    }
+
     if (this.game.mode === "base") this._walk(dt);
     this._placeCamera();
   }
@@ -813,7 +828,11 @@ export class Base {
       if (label) this.hudPrompt.innerHTML = `<kbd>E</kbd> ${label}`;
     }
     for (const item of this.items) {
-      if (item.screen) item.screen.emissiveIntensity = item === this.focus ? 1.0 + Math.sin(this.time * 6) * 0.2 : 0.55;
+      if (!item.screen) continue;
+      // The terminal the goal wants breathes slowly until you walk up to it.
+      if (item === this.focus) item.screen.emissiveIntensity = 1.0 + Math.sin(this.time * 6) * 0.2;
+      else if (item.id === this.goalId) item.screen.emissiveIntensity = 0.85 + Math.sin(this.time * 2.4) * 0.3;
+      else item.screen.emissiveIntensity = 0.55;
     }
   }
 
@@ -883,9 +902,27 @@ export class Base {
     }
   }
 
+  /* Which terminal the current goal wants: the market whenever there is
+     something in the hold, otherwise whatever the logbook points at. */
+  _goalTerminal() {
+    const p = this.game.profile;
+    if (p && p.cargo && p.cargo.length) return "market";
+    const goal = this.game.logbook ? this.game.logbook.objective() : null;
+    return goal && goal.terminal ? goal.terminal : null;
+  }
+
+  _writeGoal() {
+    const goal = this.game.logbook ? this.game.logbook.objective() : null;
+    const text = goal && goal.text ? goal.text : "";
+    if (this.hudGoal.textContent !== text) this.hudGoal.textContent = text;
+    const p = this.game.profile;
+    this.goalId = p && p.cargo && p.cargo.length ? "market" : goal && goal.terminal ? goal.terminal : null;
+  }
+
   _writeHud() {
     const p = this.game.profile;
     if (!p) return;
+    this._writeGoal();
     const cargo = (p.cargo || []).length;
     this.hudCredits.textContent = `${formatCredits(p.credits || 0)} cr${cargo ? ` · ${cargo} in the hold` : ""}`;
     this.hudFitted.textContent = this.fitted ? `fitted: ${this.fitted}` : "";

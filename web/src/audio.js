@@ -26,6 +26,13 @@ const MASTER_GAIN = 0.62;
    let a crowd of harpoon hits turn the mix to gravel. */
 const MAX_VOICES = 22;
 
+// Events the HTML spec counts as user activation, for every kind of pointer.
+const UNLOCK_EVENTS = ["pointerup", "touchend", "keydown", "click"];
+
+function documentHidden() {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
+
 /* Per-cue loudness trim, so one table holds the balance instead of it being
    smeared across seventeen envelopes. */
 const CUE_GAIN = {
@@ -46,6 +53,11 @@ const CUE_GAIN = {
   click: 0.34,
   deny: 0.40,
   depth: 0.78,
+  creak: 0.7,
+  windup: 0.62,
+  notice: 0.5,
+  beacon: 0.42,
+  echo: 0.5,
 };
 
 /* Minimum seconds between two firings of the same cue. This is also the
@@ -69,6 +81,22 @@ const CUE_GAP = {
   click: 0.03,
   deny: 0.14,
   depth: 0.90,
+  creak: 0.6,
+  windup: 0.12,
+  notice: 0.35,
+  beacon: 1.0,
+  echo: 0,
+};
+
+/* When the voice pool is nearly spent, only what matters gets through: a hull
+   giving way outranks a click. A cue of priority p needs more than 3 - p free
+   voices, so the last few are kept for the things that can kill you. */
+const CUE_PRIORITY = {
+  explode: 3, roar: 3, damage: 3, alarm: 3,
+  windup: 3, notice: 2, beacon: 2, echo: 1,
+  dock: 2, undock: 2, upgrade: 2, sell: 2, capture: 2, creak: 2,
+  harpoon: 1, torpedo: 1, sonar: 1, kill: 1, depth: 1,
+  hit: 0, click: 0, deny: 0,
 };
 
 /* Soft-clip transfer curve for the things that should sound like metal giving
@@ -180,6 +208,7 @@ export class Audio {
     // called us has already gone stale. Never let that reach the console.
     const resumed = this.ctx.resume();
     if (resumed && typeof resumed.catch === "function") resumed.catch(() => {});
+    if (this.ctx.state !== "running") this.armUnlock();
     const now = this.ctx.currentTime;
     const g = this.master.gain;
     g.cancelScheduledValues(now);
@@ -227,7 +256,49 @@ export class Audio {
     return this.enabled;
   }
 
+  /* A context made outside a gesture starts suspended, and only certain events
+     count as a gesture: for touch that is touchend/pointerup, not pointerdown.
+     Keep listening on all of them until the context actually runs. */
+  armUnlock() {
+    if (this._unlock || typeof window === "undefined" || !window.addEventListener) return;
+    const kick = () => {
+      if (!this.ctx || !this.enabled) return;
+      const p = this.ctx.resume();
+      const done = () => { if (this.ctx && this.ctx.state === "running") this.disarmUnlock(); };
+      if (p && typeof p.then === "function") p.then(done, () => {});
+      else done();
+    };
+    this._unlock = kick;
+    for (const ev of UNLOCK_EVENTS) window.addEventListener(ev, kick, { capture: true, passive: true });
+  }
+
+  disarmUnlock() {
+    if (!this._unlock || typeof window === "undefined") return;
+    for (const ev of UNLOCK_EVENTS) window.removeEventListener(ev, this._unlock, { capture: true });
+    this._unlock = null;
+  }
+
+  /* A hidden tab kept all sixteen bed sources droning. Park the context while
+     nobody can hear it and wake it when they come back. */
+  onVisibility() {
+    if (!this.ctx || !this.enabled) return;
+    if (documentHidden()) {
+      const p = this.ctx.suspend();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } else {
+      const p = this.ctx.resume();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+      if (this.ctx.state !== "running") this.armUnlock();
+    }
+  }
+
   dispose() {
+    this.disarmUnlock();
+    if (this._onVisibility && typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this._onVisibility);
+      this._onVisibility = null;
+    }
+    if (this.ctx) this.ctx.onstatechange = null;
     for (const off of this.offs) {
       try {
         off();
@@ -304,6 +375,7 @@ export class Audio {
       if (this.depthSmooth > 30) this.groan(this.ctx.currentTime + 0.08, t);
     }
 
+    this.updateBeacon(step);
     this.pruneVoices(this.ctx.currentTime);
   }
 
@@ -317,6 +389,8 @@ export class Audio {
     const gap = CUE_GAP[key] === undefined ? 0.05 : CUE_GAP[key];
     const last = this.lastCue.get(key);
     if (last !== undefined && now - last < gap) return;
+    const priority = CUE_PRIORITY[key] === undefined ? 1 : CUE_PRIORITY[key];
+    if (this.free(now) <= 3 - priority) return;
 
     const o = opts || {};
     const gain = (CUE_GAIN[key] === undefined ? 0.6 : CUE_GAIN[key]) * num(o.gain, 1);
@@ -342,7 +416,12 @@ export class Audio {
       case "explode": length = this.cueExplode(t, gain, rate); break;
       case "click": length = this.cueClick(t, gain, rate); break;
       case "deny": length = this.cueDeny(t, gain, rate); break;
-      case "depth": length = this.cueDepth(t, gain, rate); break;
+      case "depth": length = this.cueDepth(t, gain, rate, o.zone); break;
+      case "creak": length = this.cueCreak(t, gain, rate, num(o.severity, 0.5)); break;
+      case "windup": length = this.cueWindup(t, gain, rate, num(o.time, 0.45), o.at, !!o.boss); break;
+      case "notice": length = this.cueNotice(t, gain, rate, o.at); break;
+      case "beacon": length = this.cueBeacon(t, gain, rate, o.at); break;
+      case "echo": length = this.cueEcho(t, gain, rate, o.at, o.kind, num(o.size, 1)); break;
       default: return;
     }
     this.lastCue.set(key, now);
@@ -357,6 +436,16 @@ export class Audio {
       ctx = new AudioContextCtor({ latencyHint: "interactive" });
       this.ctx = ctx;
       this.build();
+      /* iOS suspends or "interrupts" the context for a call, Siri, or an app
+         switch and never says so unless asked; re-arm the unlock whenever
+         that happens so the next touch brings the sound back. */
+      ctx.onstatechange = () => {
+        if (ctx.state !== "running" && this.enabled && !documentHidden()) this.armUnlock();
+      };
+      if (typeof document !== "undefined" && document.addEventListener) {
+        this._onVisibility = () => this.onVisibility();
+        document.addEventListener("visibilitychange", this._onVisibility);
+      }
       return true;
     } catch (err) {
       // No WebAudio, or the browser refused to hand one over. Run silent.
@@ -384,11 +473,30 @@ export class Audio {
     this.comp.ratio.value = 4;
     this.comp.attack.value = 0.006;
     this.comp.release.value = 0.24;
-    this.comp.connect(ctx.destination);
+
+    /* A compressor adds make-up gain and has no brick wall, so an explosion on
+       top of a roar on top of a crunch could still clip. The ceiling is a
+       second, much harder compressor that only ever touches those peaks. */
+    this.ceiling = ctx.createDynamicsCompressor();
+    this.ceiling.threshold.value = -1;
+    this.ceiling.knee.value = 0;
+    this.ceiling.ratio.value = 20;
+    this.ceiling.attack.value = 0.001;
+    this.ceiling.release.value = 0.12;
+    this.comp.connect(this.ceiling);
+    this.ceiling.connect(ctx.destination);
+
+    /* Two ducks in series. The mode duck (panels, pause, death) lives on the
+       master gain; the event duck is only for a roar or a blast making room
+       for itself. They used to share one gain, and a roar's wall-clock timer
+       restoring it would blast the pause menu back to full a second later. */
+    this.eventDuck = ctx.createGain();
+    this.eventDuck.gain.value = 1;
+    this.eventDuck.connect(this.comp);
 
     this.master = ctx.createGain();
     this.master.gain.value = 0;
-    this.master.connect(this.comp);
+    this.master.connect(this.eventDuck);
 
     /* A delay/feedback chain standing in for the enormous room the player is
        swimming inside. Cheaper than a convolver and it never needs an impulse
@@ -744,6 +852,19 @@ export class Audio {
     this.master.gain.setTargetAtTime(target, now, Math.max(0.02, seconds || 0.12));
   }
 
+  /* A short dip for one loud event, scheduled on the audio clock so it can
+     never outlive a pause or a suspend, and never touches the mode duck. */
+  dip(level, t, hold, release) {
+    if (!this.ctx || !this.eventDuck) return;
+    const g = this.eventDuck.gain;
+    const now = this.ctx.currentTime;
+    const at = Math.max(now, t);
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(Math.max(0.0001, g.value), now);
+    g.setTargetAtTime(clamp01(level), at, 0.05);
+    g.setTargetAtTime(1, at + Math.max(0.05, hold), Math.max(0.05, release));
+  }
+
   /* ------------------------------------------------------- voice plumbing */
 
   claim(now, length) {
@@ -840,9 +961,24 @@ export class Audio {
     };
   }
 
-  out(gainValue, washSend) {
+  out(gainValue, washSend, place) {
     const g = this.gain(gainValue);
-    g.connect(this.sfxBus);
+    if (place) {
+      /* A placed voice: panned by bearing, and darker the further off or the
+         more behind it is, because water and the hull both eat the highs. */
+      const lp = this.filter("lowpass", place.cutoff, 0.7, this.ctx.currentTime);
+      g.connect(lp);
+      if (this.ctx.createStereoPanner) {
+        const pan = this.ctx.createStereoPanner();
+        pan.pan.value = place.pan;
+        lp.connect(pan);
+        pan.connect(this.sfxBus);
+      } else {
+        lp.connect(this.sfxBus);
+      }
+    } else {
+      g.connect(this.sfxBus);
+    }
     if (washSend > 0) {
       const send = this.gain(washSend);
       g.connect(send);
@@ -1118,8 +1254,7 @@ export class Audio {
     const dur = Math.max(0.9, Math.min(4.5, 2.3 * num(lengthScale, 1)));
     const out = this.out(1.1 * g, 0.3);
     // Duck everything else so the thing has the room to itself.
-    this.duck(0.62, 0.18);
-    setTimeout(() => this.duck(1, 0.9), Math.round(dur * 700));
+    this.dip(0.62, t, dur * 0.7, 0.3);
 
     const n = this.noise(t, 0.7, false);
     const shape = this.shaper();
@@ -1217,8 +1352,7 @@ export class Audio {
 
   cueExplode(t, g, r) {
     const out = this.out(1.05 * g, 0.34);
-    this.duck(0.72, 0.12);
-    setTimeout(() => this.duck(1, 0.6), 620);
+    this.dip(0.72, t, 0.62, 0.2);
 
     const n = this.noise(t, 1, false);
     const shape = this.shaper();
@@ -1293,9 +1427,11 @@ export class Audio {
 
   /* Crossing into a new band. One low swell, pitched by how deep the band is,
      and a breath of water behind it. */
-  cueDepth(t, g, r) {
+  cueDepth(t, g, r, told) {
     const out = this.out(0.95 * g, 0.32);
-    const zone = zoneForDepth(this.depthTarget);
+    /* sub:zone fires before setDepth catches up, so reading depthTarget here
+       always played the band you had just left. Use the one we were given. */
+    const zone = told && told.id ? told : zoneForDepth(this.depthTarget);
     let idx = 0;
     for (let i = 0; i < ZONES.length; i += 1) {
       if (ZONES[i].id === zone.id) idx = i;
@@ -1334,6 +1470,226 @@ export class Audio {
 
   /* Hull groans are scheduled by update(), not by the game: they are weather,
      not feedback. Deeper means more often and lower. */
+  /* Where a world position sits relative to the ears, worked out by hand from
+     the camera's inverse matrix so this module never needs three.js. Returns
+     null when there is no camera to hear from. */
+  place(pos) {
+    const cam = this.game && this.game.camera;
+    if (!cam || !pos) return null;
+    const e = cam.matrixWorldInverse.elements;
+    const x = e[0] * pos.x + e[4] * pos.y + e[8] * pos.z + e[12];
+    const y = e[1] * pos.x + e[5] * pos.y + e[9] * pos.z + e[13];
+    const z = e[2] * pos.x + e[6] * pos.y + e[10] * pos.z + e[14];
+    const d = Math.sqrt(x * x + y * y + z * z);
+    const pan = Math.max(-1, Math.min(1, x / Math.max(1, Math.hypot(x, z))));
+    const behind = z > 0 ? 0.5 : 1;
+    return {
+      pan: pan * 0.9,
+      distance: d,
+      gain: 1 / (1 + d / 18),
+      cutoff: lerp(7000, 420, clamp01(d / 150)) * behind,
+    };
+  }
+
+  /* Half a second of warning before a bite: a noise band rising in pitch and
+     level that ends exactly on the strike, from the side it is coming from.
+     Bosses take a breath first. */
+  cueWindup(t, g, r, time, at, boss) {
+    const where = this.place(at);
+    const near = where ? where.gain : 0.6;
+    const dur = Math.max(0.25, Math.min(1.2, time));
+    const out = this.out((0.55 + near * 0.6) * g, 0.2, where);
+    const n = this.noise(t, 1, true);
+    const bp = this.filter("bandpass", (boss ? 120 : 220) * r, boss ? 4 : 6, t);
+    bp.frequency.exponentialRampToValueAtTime((boss ? 700 : 1800) * r, t + dur);
+    const ng = this.gain(0.0001);
+    ng.gain.setValueAtTime(0.0001, t);
+    ng.gain.exponentialRampToValueAtTime(0.6, t + dur);
+    ng.gain.setTargetAtTime(0.0001, t + dur, 0.03);
+    n.connect(bp);
+    bp.connect(ng);
+    ng.connect(out);
+    this.retire(n, t + dur + 0.15);
+    // The jaw: a dry click right on the bite.
+    const click = this.osc("square", 1900 * r, t + dur);
+    const cg = this.gain(0);
+    this.env(cg.gain, t + dur, 0.35, 0.002, 0.05);
+    click.connect(cg);
+    cg.connect(out);
+    click.start(t + dur);
+    click.stop(t + dur + 0.08);
+    return dur + 0.1;
+  }
+
+  /* Something has noticed you: two low thrums, the way a hydrophone hears a
+     body turning in the water, placed where it is. */
+  cueNotice(t, g, r, at) {
+    const where = this.place(at);
+    const out = this.out((0.4 + (where ? where.gain : 0.5) * 0.6) * g, 0.4, where);
+    for (let i = 0; i < 2; i += 1) {
+      const at0 = t + i * 0.26;
+      const o = this.osc("sine", (i ? 58 : 72) * r, at0);
+      o.frequency.exponentialRampToValueAtTime((i ? 44 : 55) * r, at0 + 0.3);
+      const og = this.gain(0);
+      this.env(og.gain, at0, 0.7, 0.02, 0.28);
+      // A little grit on top so a laptop speaker hears it at all.
+      const h = this.osc("triangle", (i ? 232 : 288) * r, at0);
+      const hg = this.gain(0);
+      this.env(hg.gain, at0, 0.12, 0.01, 0.2);
+      o.connect(og);
+      og.connect(out);
+      h.connect(hg);
+      hg.connect(out);
+      o.start(at0);
+      o.stop(at0 + 0.4);
+      h.start(at0);
+      h.stop(at0 + 0.3);
+    }
+    return 0.7;
+  }
+
+  /* The Hull calls you in. A soft two-note chirp from wherever the station is,
+     every 5.7 s — half the beacon light's period, so it lands on the flash —
+     audible from thirty metres to about three hundred and fifty. When the
+     hold is full or the cell is low it calls twice as often and louder: the
+     sea does not care whether you find your way home, but the Hull does. */
+  updateBeacon(step) {
+    const game = this.game;
+    const sub = game && game.sub;
+    const world = game && game.world;
+    if (!sub || !world || game.mode !== "dive" || sub.docked) {
+      this.beaconIn = 1.5;
+      return;
+    }
+    const station = world.stationPosition;
+    const d = sub.position.distanceTo(station);
+    const urgent = sub.cargoFull || sub.battery < sub.batteryMax * 0.25;
+    this.beaconIn = (this.beaconIn === undefined ? 1.5 : this.beaconIn) - step;
+    if (this.beaconIn > 0) return;
+    this.beaconIn = urgent ? 2.85 : 5.7;
+    if (d < 30 || d > 350) return;
+    this.sfx("beacon", { at: station, gain: urgent ? 1.5 : 1 });
+  }
+
+  cueBeacon(t, g, r, at) {
+    const where = this.place(at);
+    const out = this.out(g * (where ? Math.max(0.35, where.gain * 4) : 0.6), 0.5, where);
+    const notes = [392, 587];
+    for (let i = 0; i < 2; i += 1) {
+      const at0 = t + i * 0.16;
+      const o = this.osc("sine", notes[i] * r, at0);
+      const og = this.gain(0);
+      this.env(og.gain, at0, 0.5, 0.008, 0.22);
+      o.connect(og);
+      og.connect(out);
+      o.start(at0);
+      o.stop(at0 + 0.3);
+    }
+    return 0.5;
+  }
+
+  /* Sonar returns. Each contact answers when the painted front reaches it —
+     the same 150 m/s the water model sweeps at — so what you see and what you
+     hear arrive together. Bigger things answer lower and longer; hostiles
+     rough and doubled; the Hull with its two notes; a landmark with an open
+     fifth; the floor with a low knock, like a fathometer. */
+  sonarReturns(range) {
+    if (!this.running || !this.ctx) return;
+    const game = this.game;
+    const sub = game.sub;
+    if (!sub) return;
+    const r = Math.max(20, num(range, 140));
+    const echoes = this.echoes || (this.echoes = []);
+    echoes.length = 0;
+    const add = (pos, kind, size) => {
+      const d = pos.distanceTo(sub.position);
+      if (d > r) return;
+      echoes.push({ pos, kind, size, d });
+    };
+    const all = game.creatures && game.creatures.all;
+    if (all) for (const c of all) if (c.alive) add(c.position, c.aggro || c.type.kind !== "leviathan" ? "hostile" : "body", c.radius || 1);
+    if (game.world) add(game.world.stationPosition, "station", 6);
+    const lm = game.landmarks && game.landmarks.nearest(sub.position, r);
+    if (lm) add(lm.position, "landmark", 4);
+    echoes.sort((a, b) => a.d - b.d);
+    for (let i = 0; i < Math.min(echoes.length, 7); i += 1) {
+      const e = echoes[i];
+      this.sfx("echo", { at: e.pos, kind: e.kind, size: e.size, delay: e.d / 150 });
+    }
+    // The floor straight down, always last to be missed and first to matter.
+    const alt = num(sub.altitude, 999);
+    if (alt < r) {
+      this.sfx("echo", { kind: "floor", size: 8, delay: alt / 150 });
+    }
+  }
+
+  cueEcho(t, g, r, at, kind, size) {
+    const where = at ? this.place(at) : null;
+    const near = where ? Math.max(0.25, 1 / (1 + where.distance / 40)) : 0.8;
+    const out = this.out(g * near, 0.45, where);
+    if (kind === "floor") {
+      const n = this.noise(t, 1, false);
+      const lp = this.filter("lowpass", 260 * r, 1.2, t);
+      const ng = this.gain(0);
+      this.env(ng.gain, t, 0.6, 0.004, 0.18);
+      n.connect(lp);
+      lp.connect(ng);
+      ng.connect(out);
+      this.retire(n, t + 0.25);
+      return 0.25;
+    }
+    const tones = kind === "station" ? [392, 587] : kind === "landmark" ? [523, 784] : [1400 / Math.pow(Math.max(0.5, size), 0.3)];
+    const len = kind === "hostile" || kind === "body" ? lerp(0.04, 0.14, clamp01(size / 12)) : 0.12;
+    for (let i = 0; i < tones.length; i += 1) {
+      const at0 = t + (kind === "station" ? i * 0.12 : 0);
+      const o = this.osc("sine", tones[i] * r, at0);
+      const og = this.gain(0);
+      this.env(og.gain, at0, 0.5, 0.003, len);
+      o.connect(og);
+      og.connect(out);
+      o.start(at0);
+      o.stop(at0 + len + 0.1);
+      // Something with teeth answers doubled and rough.
+      if (kind === "hostile") {
+        const o2 = this.osc("sawtooth", tones[i] * 1.03 * r, at0);
+        const g2 = this.gain(0);
+        this.env(g2.gain, at0, 0.12, 0.003, len);
+        o2.connect(g2);
+        g2.connect(out);
+        o2.start(at0);
+        o2.stop(at0 + len + 0.1);
+      }
+    }
+    return len + 0.2;
+  }
+
+  /* The casing past its rating: a long bent-metal glide over a low body, both
+     longer, lower and louder the further past you are. Not the band swell —
+     "the sea is folding you shut" and "welcome to the kelp" were one sound. */
+  cueCreak(t, g, r, severity) {
+    const sev = clamp01(severity);
+    const dur = lerp(0.9, 2.2, sev);
+    const out = this.out((0.55 + sev * 0.5) * g, 0.34);
+    const n = this.noise(t, 1, false);
+    const bp = this.filter("bandpass", 300 * r, 12, t);
+    bp.frequency.exponentialRampToValueAtTime(lerp(520, 380, sev) * r, t + dur);
+    const ng = this.gain(0);
+    this.env(ng.gain, t, 0.5, dur * 0.3, dur * 0.7);
+    n.connect(bp);
+    bp.connect(ng);
+    ng.connect(out);
+    this.retire(n, t + dur + 0.1);
+    const body = this.osc("triangle", lerp(60, 52, sev) * r, t);
+    body.frequency.exponentialRampToValueAtTime(lerp(48, 38, sev) * r, t + dur);
+    const bg = this.gain(0);
+    this.env(bg.gain, t, 0.4, dur * 0.25, dur * 0.75);
+    body.connect(bg);
+    bg.connect(out);
+    body.start(t);
+    body.stop(t + dur + 0.1);
+    return dur;
+  }
+
   groan(t, depthT) {
     if (!this.running || !this.ctx) return;
     if (this.free(this.ctx.currentTime) < 3) return;
@@ -1390,11 +1746,19 @@ export class Audio {
     });
 
     on("creature:aggro", (e) => {
-      const type = e && e.creature ? e.creature.type : null;
-      // Only the things large enough to be heard through steel get a roar.
+      const c = e && e.creature;
+      const type = c ? c.type : null;
+      // Only the things large enough to be heard through steel get a roar;
+      // everything else is still heard turning toward you, from where it is.
       if (type && (type.boss || type.mythic)) {
         this.sfx("roar", { length: type.boss ? 1.5 : 1.1, rate: type.boss ? 0.8 : 1 });
+      } else if (c) {
+        this.sfx("notice", { at: c.position, rate: type && type.size > 4 ? 0.8 : 1 });
       }
+    });
+    on("creature:windup", (e) => {
+      const c = e && e.creature;
+      if (c) this.sfx("windup", { at: c.position, time: e.time, boss: !!(c.type && c.type.boss) });
     });
     on("creature:killed", (e) => {
       const type = e && e.creature ? e.creature.type : null;
@@ -1406,8 +1770,13 @@ export class Audio {
     on("fish:cargo-full", () => this.sfx("deny"));
 
     on("sub:damage", (e) => {
+      /* Pressure damage arrives as a slow trickle; it has its own voice (the
+         creak and the groans), and crunching on every sliver of it made a new
+         player six metres past their rating hear the boat torn apart nine
+         times a second. Only real blows crunch, and they scale with the blow. */
       const amount = e ? num(e.amount, 0) : 0;
-      this.sfx("damage", { gain: 0.8 + clamp01(amount / 40) * 0.5 });
+      if ((e && e.continuous) || amount < 1) return;
+      this.sfx("damage", { gain: 0.55 + clamp01(amount / 30) * 0.6 });
     });
     on("sub:collide", (e) => {
       const speed = e ? num(e.speed, 0) : 0;
@@ -1417,9 +1786,12 @@ export class Audio {
     on("sub:pressure", () => this.sfx("alarm", { count: 2 }));
     on("sub:battery-empty", () => this.sfx("alarm", { count: 3, rate: 0.8 }));
     on("sub:destroyed", () => this.sfx("explode"));
-    on("sub:zone", () => this.sfx("depth"));
+    on("sub:zone", (e) => this.sfx("depth", { zone: e && e.zone }));
 
-    on("sonar:ping", () => this.sfx("sonar"));
+    on("sonar:ping", (e) => {
+      this.sfx("sonar");
+      this.sonarReturns(e && e.range);
+    });
     on("station:dock", () => this.sfx("dock"));
     on("station:undock", () => this.sfx("undock"));
     on("economy:sold", () => this.sfx("sell"));
