@@ -8,11 +8,14 @@
  * Nothing heavy loads until you press Dive: the menu only needs the genetics,
  * and the genetics are a few kilobytes. */
 
-import { RARITY, ZONES, zoneIndex } from "./config.js";
+import { RARITY, SITE, ZONES, zoneIndex } from "./config.js";
 import { formatCredits, formatDepth } from "./util.js";
 import { Ecology } from "./ecology.js";
-import { clearProfile, loadProfile } from "./save.js";
+import { clearProfile, listSeas, loadProfile, loadSea } from "./save.js";
 import { watchMenuPad } from "./input.js";
+import { dailyPhrase, dayKey } from "./daily.js";
+import { shareOutcome, shareSea } from "./share.js";
+import { pageview, track } from "./analytics.js";
 
 /* Seas worth surfacing. Each grows a different roster, and the deeper bands
    are where the odd ones end up, so the list is chosen for words that read
@@ -56,6 +59,15 @@ const els = {
   phrase: $("start-phrase"),
   reset: $("start-reset"),
   summary: $("start-summary"),
+  daily: $("start-daily"),
+  share: $("start-share"),
+  seas: $("start-seas"),
+  seasList: $("start-seas-list"),
+  supportWrap: $("start-support-wrap"),
+  support: $("start-support"),
+  communityWrap: $("start-community-wrap"),
+  community: $("start-community"),
+  note: $("start-note"),
   loading: $("loading"),
   loadingText: $("loading-text"),
   loadingBar: $("loading-bar"),
@@ -161,13 +173,26 @@ function showSea(next) {
     const top = ZONES[Math.min(...bands)];
     const bottom = ZONES[Math.max(...bands)];
     const best = roster.reduce((a, b) => (b.baseValue > a.baseValue ? b : a), roster[0]);
-    els.summary.textContent = `${roster.length} species · ${top.name} down to ${bottom.name} · best ${formatCredits(best.baseValue)} cr`;
+    const today = next === dailyPhrase() ? `today's sea (${dayKey()}) · ` : "";
+    els.summary.textContent = `${today}${roster.length} species · ${top.name} down to ${bottom.name} · best ${formatCredits(best.baseValue)} cr`;
   }
+}
+
+/* Look at a sea, and at your run on it if you have one. Every sea keeps its
+   own save, so looking never costs anything. */
+function selectSea(next) {
+  showSea(next);
+  saved = loadSea(next);
+  renderMenu();
 }
 
 function anotherSea() {
   const pool = SEAS.filter((s) => s !== phrase);
-  showSea(pool[Math.floor(Math.random() * pool.length)] || SEAS[0]);
+  selectSea(pool[Math.floor(Math.random() * pool.length)] || SEAS[0]);
+}
+
+function say(text) {
+  if (els.note) els.note.textContent = text || "";
 }
 
 /* --------------------------------------------------------------- the menu -- */
@@ -196,17 +221,10 @@ function restore(state) {
   if (armed === state) armed = null;
 }
 
-function worthKeeping(profile) {
-  if (!profile) return false;
-  const stats = profile.stats || {};
-  return (stats.dives || 0) > 0 || (stats.fishSold || 0) > 0 || (profile.cargo || []).length > 0;
-}
-
 function renderMenu() {
-  const has = !!(saved && saved.phrase);
+  const has = !!(saved && saved.phrase === phrase);
   if (has) {
     // Continuing is the default when there is something to continue.
-    showSea(saved.phrase);
     els.cont.hidden = false;
     const deepest = (saved.stats && saved.stats.deepest) || 0;
     els.cont.textContent = deepest
@@ -214,14 +232,37 @@ function renderMenu() {
       : `Continue · ${formatCredits(saved.credits || 0)} cr`;
     els.cont.classList.add("primary");
     els.begin.hidden = true;
-    els.fresh.hidden = false;
-    els.reroll.hidden = true;
   } else {
     els.cont.hidden = true;
     els.begin.hidden = false;
-    els.fresh.hidden = true;
-    els.reroll.hidden = false;
   }
+  // Nothing here is destructive any more, so there is no "start a new sea".
+  els.fresh.hidden = true;
+  renderSeas();
+}
+
+/* The seas you have been to, newest first, one click to go back. */
+function renderSeas() {
+  if (!els.seas || !els.seasList) return;
+  const seas = listSeas().filter((e) => e.phrase);
+  els.seas.hidden = seas.length === 0;
+  const summary = els.seas.querySelector("summary");
+  if (summary) summary.textContent = `Your seas (${seas.length})`;
+  const frag = document.createDocumentFragment();
+  for (const entry of seas) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "sea-row";
+    if (entry.phrase === phrase) b.dataset.current = "1";
+    const name = document.createElement("strong");
+    name.textContent = entry.phrase;
+    const meta = document.createElement("span");
+    meta.textContent = `${formatCredits(entry.credits)} cr${entry.deepest ? ` · ${formatDepth(entry.deepest)} deep` : ""}`;
+    b.append(name, meta);
+    b.addEventListener("click", () => selectSea(entry.phrase));
+    frag.appendChild(b);
+  }
+  els.seasList.replaceChildren(frag);
 }
 
 /* ------------------------------------------------------------------ boot -- */
@@ -271,12 +312,6 @@ async function boot(seaPhrase, profile) {
   }
 }
 
-/* Start a brand new run on the sea the menu is showing. */
-function diveFresh() {
-  clearProfile();
-  boot(phrase, null);
-}
-
 /* ------------------------------------------------------------------ wire -- */
 
 function init() {
@@ -290,63 +325,69 @@ function init() {
     return;
   }
 
-  saved = loadProfile();
+  pageview();
 
-  // A shared link still picks its own sea, and skips straight past the menu's
-  // choice of one.
-  const urlPhrase = new URLSearchParams(window.location.search).get("phrase");
-  showSea(urlPhrase || (saved && saved.phrase) || SEAS[Math.floor(Math.random() * SEAS.length)]);
-  if (urlPhrase) saved = saved && saved.phrase === urlPhrase ? saved : null;
+  /* Which sea to show first: a shared link, then ?daily, then the last sea
+     you played, then one at random. A link never touches another sea's run. */
+  const params = new URLSearchParams(window.location.search);
+  const urlPhrase = (params.get("phrase") || "").trim();
+  const last = loadProfile();
+  const first = urlPhrase
+    || (params.has("daily") ? dailyPhrase() : "")
+    || (last && last.phrase)
+    || SEAS[Math.floor(Math.random() * SEAS.length)];
+  selectSea(first);
 
-  renderMenu();
+  // Links that only exist once somebody has filled them in (config.SITE).
+  if (SITE.support && els.support) {
+    els.support.href = SITE.support;
+    els.supportWrap.hidden = false;
+  }
+  if (SITE.community && els.community) {
+    els.community.href = SITE.community;
+    els.communityWrap.hidden = false;
+  }
+
   // A controller can dive from the menu; the game takes the pad over once it exists.
   watchMenuPad(() => !!window.__deep);
 
   els.begin.addEventListener("click", () => boot(phrase, null));
-
-  els.cont.addEventListener("click", () => boot(saved.phrase, saved));
-
-  els.fresh.addEventListener("click", () => {
-    if (worthKeeping(saved)) {
-      arm(els.fresh, "this erases your run — sure?", () => {
-        saved = null;
-        anotherSea();
-        renderMenu();
-      });
-      return;
-    }
-    saved = null;
-    anotherSea();
-    renderMenu();
-  });
-
+  els.cont.addEventListener("click", () => boot(phrase, saved));
   els.reroll.addEventListener("click", anotherSea);
+
+  if (els.daily) {
+    els.daily.addEventListener("click", () => {
+      selectSea(dailyPhrase());
+      say("everyone gets the same sea today. it changes at midnight UTC.");
+      track("daily");
+    });
+  }
+
+  if (els.share) {
+    els.share.addEventListener("click", async () => {
+      const result = await shareSea(phrase);
+      say(shareOutcome(result));
+      if (result !== "cancelled") track("share-menu");
+    });
+  }
 
   els.form.addEventListener("submit", (e) => {
     e.preventDefault();
     const typed = (els.phrase.value || "").trim();
     if (!typed) return;
-    if (saved && saved.phrase === typed) {
-      boot(typed, saved);
-      return;
-    }
-    if (worthKeeping(saved)) {
-      const button = e.submitter || els.form.querySelector("button");
-      arm(button, "this erases your run — sure?", () => diveFresh());
-      phrase = typed;
-      return;
-    }
-    phrase = typed;
-    diveFresh();
+    selectSea(typed);
+    boot(typed, saved);
   });
 
   els.reset.addEventListener("click", () => {
+    if (!saved) {
+      say("nothing saved on this sea yet.");
+      return;
+    }
     arm(els.reset, "erase it?", () => {
-      clearProfile();
+      clearProfile(phrase);
       saved = null;
-      els.reset.textContent = "save erased";
-      els.reset.disabled = true;
-      anotherSea();
+      say("that sea's save is gone. your other seas are untouched.");
       renderMenu();
     });
   });

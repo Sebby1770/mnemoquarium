@@ -1397,6 +1397,84 @@ body[data-mode="base"] #hud > :not(#toast) { visibility: hidden; }
 .base-fitted { font-family: var(--mono); font-size: 0.66rem; color: var(--faint); }
 #btn-walk { margin-right: auto; }
 
+/* ------------------------------------------------------------- photo mode */
+
+/* Everything that is not the sea goes away while the camera is out. */
+body[data-photo="1"] #hud,
+body[data-photo="1"] #base-hud,
+body[data-photo="1"] .touch-actions,
+body[data-photo="1"] .touch-bar,
+body[data-photo="1"] .touch-stick-zone { visibility: hidden !important; opacity: 0 !important; }
+.photo-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--hud-gap) + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 16;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.55rem 0.45rem 1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(4, 9, 15, 0.8);
+  font-size: 0.78rem;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.photo-bar[hidden] { display: none; }
+.photo-title { color: var(--amber); letter-spacing: 0.14em; text-transform: uppercase; font-size: 0.66rem; }
+.photo-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(10, 22, 32, 0.9);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.photo-btn.primary { border-color: var(--accent); background: rgba(40, 110, 120, 0.45); }
+.photo-btn:hover, .photo-btn:focus-visible { border-color: var(--accent); }
+.photo-inner { width: min(96vw, 1100px); display: grid; gap: 0.8rem; }
+.photo-preview { width: 100%; max-height: 66vh; object-fit: contain; border-radius: 8px; border: 1px solid var(--line); background: #000; }
+.photo-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.photo-note { min-height: 1.2em; }
+@media (max-width: 600px) {
+  .photo-help { display: none; }
+}
+
+/* ------------------------------------------------------------ menu extras */
+
+.sea-head > .sea-links { flex: none; display: flex; gap: 0.9rem; align-items: baseline; }
+.sea-links .linkish { white-space: nowrap; }
+@media (max-width: 600px) {
+  .sea-head { flex-wrap: wrap; }
+  .sea-head > .sea-links { width: 100%; }
+}
+.seas-list { display: grid; gap: 0.35rem; margin-top: 0.5rem; }
+.sea-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(8, 18, 28, 0.6);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+.sea-row span { font-family: var(--mono); font-size: 0.74rem; color: var(--amber); white-space: nowrap; }
+.sea-row[data-current="1"] { border-color: var(--accent); }
+.sea-row:hover, .sea-row:focus-visible { border-color: var(--line-strong); }
+#start-note:empty { display: none; }
+
 /* ------------------------------------------------------------ responsive */
 
 @media (max-width: 820px) {
