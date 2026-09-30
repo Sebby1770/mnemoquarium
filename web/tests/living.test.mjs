@@ -271,3 +271,43 @@ test("a full plate pays once, and only when the last stamp lands", () => {
   handlers["fish:captured"]({ item: { kind: "fish", speciesIndex: sp.index, rarity: "mythic", mutations: 3, generation: 5, depth: deep } });
   assert.equal(credits.length, 1, "paid for the same plate twice");
 });
+
+test("naturally mythic species have a completable plate", () => {
+  const sp = { index: 0, rarity: "mythic", zone: { top: 0, bottom: 90 } };
+  const e = goals.recordCatch(null, { rarity: "mythic", mutations: 1, generation: 2, depth: 60 });
+  assert.equal(goals.stampCount(e, sp), 4);
+});
+
+test("research prioritizes nearly complete reachable plates without revealing unlogged names", () => {
+  const p = freshProfile();
+  const species = [
+    { index: 0, name: "secret fish", rarity: "common", zone: { top: 0, bottom: 90, name: "Shelf" } },
+    { index: 1, name: "kelp fish", rarity: "common", zone: { top: 90, bottom: 240, name: "Kelp" } },
+  ];
+  p.log.codex[1] = { r: 3, m: 1, d: 100 };
+  const shallow = goals.researchGoal(p, species, 140);
+  assert.equal(shallow.speciesIndex, 0);
+  assert.doesNotMatch(shallow.text, /secret fish/);
+  const deeper = goals.researchGoal(p, species, 240);
+  assert.equal(deeper.speciesIndex, 1);
+  assert.equal(deeper.depth, 180);
+  assert.equal(deeper.stamp, "deep");
+  p.log.codex[0] = { r: 3, m: 1, d: 70 };
+  p.log.codex[1].d = 200;
+  assert.equal(goals.researchGoal(p, species, 240), null);
+});
+
+test("the logbook offers research after the tutorial and recognizes a complete collection", () => {
+  const p = freshProfile();
+  p.stats.discovered = [0];
+  p.stats.fishSold = 1;
+  p.stats.sighted = ["turtle"];
+  p.stats.landmarks = ["lm-0"];
+  p.stats.deepest = 250;
+  p.upgrades.pressure = 2;
+  const species = [{ index: 0, name: "test fish", rarity: "common", zone: { top: 0, bottom: 90, name: "Shelf" } }];
+  const book = new Logbook({ profile: p, ecology: { species }, stats: { pressureRating: 240 } });
+  assert.match(book.objective().text, /research · catch test fish/);
+  p.log.codex[0] = { r: 3, m: 1, d: 60 };
+  assert.match(book.objective().text, /codex complete/);
+});

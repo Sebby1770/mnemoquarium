@@ -2,6 +2,16 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## Unreleased
+
+- Research continues after the first-dive goals: the objective names a missing
+  codex stamp, prioritizing nearly finished plates within the boat's depth
+  rating. Completed collections receive a completion message.
+- The manifest lists missing stamps in text, including the exact depth needed,
+  so research requirements are readable without hovering over tiny dots.
+- Naturally mythic species can complete their rarity stamp by catching a
+  mythic specimen; the old rule required an impossible higher rarity.
+
 ## [1.8.0] - 2026-09-28 — The Living Deep
 
 ### Fixed

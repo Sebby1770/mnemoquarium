@@ -227,7 +227,10 @@ export function stampsFor(entry, species) {
   if (!entry || !entry.r) return out;
   out.caught = true;
   const base = Math.max(0, RARITY_ORDER.indexOf(species && species.rarity));
-  out.rarer = (entry.r >> (base + 1)) > 0;
+  // Mythic is the ceiling: a mythic specimen satisfies this stamp instead
+  // of requiring a nonexistent fifth rarity tier.
+  out.rarer = base === RARITY_ORDER.length - 1
+    ? !!(entry.r & (1 << base)) : (entry.r >> (base + 1)) > 0;
   out.mutant = entry.m >= 1;
   out.deep = entry.d >= deepMark(species && species.zone);
   return out;
@@ -248,4 +251,31 @@ export function codexProgress(codex, species) {
 /* A species with every stamp pays once: a full plate is worth four of it. */
 export function plateBonus(species) {
   return Math.round((Number(species && species.baseValue) || 0) * 4);
+}
+
+/* A readable research target, shared by the manifest and the dive objective.
+   Prefer plates already close to completion, but never send a stock boat
+   below its casing rating just because a specimen is valuable. */
+export function researchGoal(profile, species, rating) {
+  const codex = profile?.log?.codex || {};
+  let best = null;
+  for (const sp of species || []) {
+    const stamps = stampsFor(codex[sp.index], sp);
+    const missing = STAMPS.filter((id) => !stamps[id]);
+    if (!missing.length) continue;
+    const stamp = missing[0];
+    const depth = stamp === "deep" ? Math.ceil(deepMark(sp.zone)) : (sp.zone?.top || 0) + 10;
+    if (depth > rating) continue;
+    const count = STAMPS.length - missing.length;
+    if (best && count <= best.count) continue;
+    const known = stamps.caught || (profile?.stats?.discovered || []).includes(sp.index);
+    const name = known ? sp.name : "an unlogged species";
+    const task = stamp === "caught" ? `catch ${name}`
+      : stamp === "rarer" ? `find a ${sp.rarity === "mythic" ? "mythic" : "rarer"} ${name}`
+      : stamp === "mutant" ? `find a mutated ${name}`
+      : `catch ${name} at ${depth} m or deeper`;
+    best = { id: "research", text: `research · ${task} · ${sp.zone?.name || "the sea"}`,
+      target: null, terminal: null, speciesIndex: sp.index, stamp, depth, count };
+  }
+  return best;
 }

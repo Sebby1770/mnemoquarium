@@ -14,7 +14,7 @@ import { upgradeCost } from "./progression.js";
 import { rumourCentre } from "./nav.js";
 import {
   CHAIN, DONE_LINES, FIRST_DESCENT_FEE, STAMPS, STAMP_LABELS,
-  currentStep, objectiveFor, plateBonus, recordCatch, stampsFor, stepIndex,
+  currentStep, objectiveFor, plateBonus, recordCatch, researchGoal, stampsFor, stepIndex,
 } from "./goals.js";
 
 const CHECK_EVERY = 0.25;         // seconds between chain checks
@@ -115,7 +115,16 @@ export class Logbook {
     const game = this.game;
     const profile = game.profile;
     const step = currentStep(profile);
-    if (!step) return null;
+    if (!step) {
+      const research = researchGoal(profile, game.ecology?.species, game.stats?.pressureRating || 140);
+      if (research) return research;
+      const incomplete = (game.ecology?.species || []).some((sp) =>
+        !STAMPS.every((id) => stampsFor(profile.log?.codex?.[sp.index], sp)[id]));
+      return { id: "research", text: incomplete
+        ? "deeper research awaits — refit the pressure casing at the Hull"
+        : "codex complete — every species, every stamp. this sea is in the record.",
+        target: null, terminal: incomplete ? "drydock" : "log" };
+    }
     const sub = game.sub;
     const station = game.world && game.world.stationPosition;
     if (sub) {

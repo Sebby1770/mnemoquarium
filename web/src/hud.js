@@ -32,7 +32,7 @@ import {
   describeStats,
 } from "./progression.js";
 import { bearingOf, compassPoint, formatRange } from "./nav.js";
-import { STAMPS, STAMP_LABELS, codexProgress, recommendedRefit, stampsFor } from "./goals.js";
+import { STAMPS, STAMP_LABELS, codexProgress, deepMark, recommendedRefit, stampsFor } from "./goals.js";
 
 /* Scratch, hoisted so the per-frame loops never allocate. */
 const _fwd = new THREE.Vector3();
@@ -1506,6 +1506,14 @@ export class HUD {
         ? `"${entry.word}" · ${zone.name}`
         : `${zone.name} · never in the hold`));
 
+      const specimen = this.ecology.species[entry.index];
+      const recorded = stampsFor(codex[entry.index], specimen);
+      const needed = STAMPS.filter((id) => !recorded[id]).map((id) =>
+        id === "deep" ? `caught at ${Math.ceil(deepMark(zone))} m+`
+          : id === "rarer" && specimen.rarity === "mythic" ? "a mythic specimen" : STAMP_LABELS[id]);
+      main.appendChild(elem("span", "row-sub", needed.length
+        ? `next stamps: ${needed.join(" · ")}` : "full plate · all four stamps recorded"));
+
       const tail = elem("div", "row-tail");
       // One pip per stamp: caught, a rarer one, a mutant, from deep in its band.
       const stamps = stampsFor(codex[entry.index], this.ecology.species[entry.index]);
@@ -1513,7 +1521,7 @@ export class HUD {
       for (const id of STAMPS) {
         const pip = elem("span", "codex-pip", "");
         pip.dataset.on = stamps[id] ? "1" : "0";
-        pip.title = STAMP_LABELS[id];
+        pip.title = id === "rarer" && specimen.rarity === "mythic" ? "a mythic specimen" : STAMP_LABELS[id];
         pips.appendChild(pip);
       }
       pips.setAttribute("aria-label", STAMPS.filter((id) => stamps[id]).map((id) => STAMP_LABELS[id]).join(", ") || "no stamps");
