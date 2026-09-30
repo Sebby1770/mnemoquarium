@@ -456,6 +456,13 @@ export class HUD {
     else this.panels.pause.querySelector(".panel-inner")?.appendChild(qualityRow);
     this.made.push(qualityRow);
 
+    // Ticking the box is a choice, and a choice outlives the default.
+    const soundChosen = () => {
+      const p = this.game.profile;
+      if (p && p.settings) p.settings.soundSet = true;
+    };
+    this.toggleSound.addEventListener("change", soundChosen);
+    this.timers.push(() => this.toggleSound.removeEventListener("change", soundChosen));
     const settings = () => this.applySettings();
     this.selectQuality.addEventListener("change", settings);
     this.toggleSound.addEventListener("change", settings);

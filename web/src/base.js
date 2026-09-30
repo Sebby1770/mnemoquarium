@@ -30,7 +30,9 @@ const RADIUS = 0.35;
 const WALK = 3.1;
 const RUN = 5.4;
 const LOOK_SENS = SUB.lookSensitivity;
-const SPAWN = { x: 0.6, z: -3.9, yaw: Math.PI };  // just climbed out: at the hatch, looking back at the boat
+// Just climbed out: beside the pool, looking along the boat into the room.
+// (Facing the boat head-on from the hatch filled the screen with sail.)
+const SPAWN = { x: 3.2, z: -5.4, yaw: Math.atan2(3.2, -5.4) };
 
 const _dir = new THREE.Vector3();
 const _euler = new THREE.Euler(0, 0, 0, "YXZ");
@@ -531,8 +533,10 @@ export class Base {
   }
 
   _buildTank() {
-    const glassMat = this._mat({ color: 0x9fe8ff, roughness: 0.05, transparent: true, opacity: 0.16, depthWrite: false });
-    const waterMat = this._mat({ color: 0x0d4d5c, emissive: 0x0a3a46, emissiveIntensity: 0.6, transparent: true, opacity: 0.35, depthWrite: false });
+    // Glass and water barely there: with the room's reflections on them at
+    // full strength they read as frosted, and the fish are the point.
+    const glassMat = this._mat({ color: 0x9fe8ff, roughness: 0.05, transparent: true, opacity: 0.05, depthWrite: false, envMapIntensity: 0.2 });
+    const waterMat = this._mat({ color: 0x021a20, roughness: 1, transparent: true, opacity: 0.32, depthWrite: false, envMapIntensity: 0 });
     const frame = this._mat({ color: 0x14191d, roughness: 0.5, metalness: 0.8 });
     const cx = 0;
     const cz = -17.6;

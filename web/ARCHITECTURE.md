@@ -51,7 +51,7 @@ modules disagree the one that broke this file is wrong.
 | `src/sub.js` | agent | `Submarine` |
 | `src/hud.js` + `styles.css` | agent | `HUD` |
 | `src/audio.js` | agent | `Audio` |
-| `src/save.js` | agent | `loadProfile, saveProfile, newProfile, clearProfile, SAVE_KEY, migrate` |
+| `src/save.js` | agent | `loadProfile, saveProfile, newProfile, clearProfile(phrase?), loadSea, listSeas, seaKeyFor, SAVE_KEY, migrate` — one slot per sea |
 | `src/game.js` + `src/main.js` | agent | `Game`; `main.js` has no exports |
 | `src/chart.js` | agent | `Chart` — the sea chart panel (`M`), built from JS |
 | `src/nav.js` | agent | `bearingOf, compassPoint, formatRange, rumourCentre, COMPASS_POINTS, RUMOUR_RADIUS` — no three.js |
@@ -62,6 +62,10 @@ modules disagree the one that broke this file is wrong.
 | `src/walk.js` | agent | `resolveCircle, pickInteractable` — no three.js |
 | `src/submodel.js` | agent | `buildSubModel(upgrades), fittedParts(upgrades)` |
 | `src/ambient.js` | agent | `AmbientLife, AMBIENT_KINDS, placeFor` — one InstancedMesh per kind, vertex-animated |
+| `src/photo.js` | agent | `PhotoMode` (P), `captionFor` — game.frame holds while `photo.frozen()` |
+| `src/share.js` | agent | `seaLink, shareText, shareSea, shareOutcome` |
+| `src/daily.js` | agent | `dayKey, dailyPhrase` — pure |
+| `src/analytics.js` | agent | `track, pageview, attachAnalytics, shouldTrack, eventUrl` — off unless `SITE.goatcounter` |
 | `src/quality.js` | agent | `ResolutionGovernor, pixelRatioFor, SCALE, QUALITY_MODES` — no three.js |
 
 ## The `game` object

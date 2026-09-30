@@ -2,6 +2,49 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.7.0] - 2026-09-25
+
+### Fixed
+- **The station was a black blob.** The Hull's exterior was bare metal, and
+  metal under water has nothing to reflect, so from the boat it read as a black
+  capsule on black legs behind a glowing ring. It is rebuilt as a proper seabed
+  station: a painted hub with a glass observation dome and its name on the
+  band, three habitat modules on connecting tubes with lit portholes, a docking
+  bay with a lit door and guide lights chasing in to the ring, legs on footings,
+  a beacon mast, red and green running lights, white strobes, and an umbilical
+  cable climbing to a buoy on the surface. About fifteen draw calls, and solid:
+  the boat now collides with it instead of flying through.
+- **Stepping out into the Hull faced a wall of sail.** You now come out beside
+  the pool, looking along the boat into the room.
+- **Sound never started.** Nothing called the audio engine on a dive, so even
+  a player who had switched sound on had it silently off after every reload.
+  It now starts on the Dive click (with a first-gesture retry for Safari).
+- **Opening a shared link erased your run.** There was one save slot, so
+  diving a friend's `?phrase=` link overwrote whatever you were playing. Every
+  sea now keeps its own save; the old single save is adopted into a slot the
+  first time the game sees it, rather than overwritten.
+- The tank's glass read as frosted once the room had reflections.
+
+### Added
+- **Sound on by default.** Saves from before were muted by default rather than
+  by choice, so they get sound back; ticking the box off is remembered.
+- **Photo mode** (`P`): the sea holds still, the instruments go away, and the
+  shot is taken at full resolution with a caption — the phrase, the depth and
+  band, and where to grow your own sea — then saved, shared (the image itself,
+  on phones), or its sea's link copied.
+- **Today's sea**: one phrase for everybody, from the date. `?daily` links to it.
+- **Share** on the menu, and *Your seas*: every sea you have played, one click
+  back to each.
+- Link previews: Open Graph and Twitter card tags with a 1200×630 image, so a
+  shared link shows the station and the title instead of a bare URL.
+- Optional, cookie-free analytics (GoatCounter): off until `SITE.goatcounter`
+  is set, honours Do Not Track, never sends phrases.
+- `SITE.support` and `SITE.community` in the config: set them and the menu
+  grows *support the game* and *join the crew* links.
+- `scripts/package_itch.py` and a *Package for itch.io* workflow; a press-shot
+  generator (`scripts/press-shots.mjs`); and `marketing/` with the itch.io page
+  copy, a press kit, and launch post drafts.
+
 ## [1.6.0] - 2026-09-24
 
 ### Added

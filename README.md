@@ -15,8 +15,15 @@ learn a room.
 ## Play
 
 Press **Dive**. That is the whole menu — it picks a sea for you and drops you
-in the water. If you want a particular one, *Grow a sea from your own words* at
-the bottom of the menu takes any phrase you like.
+in the water. If you want a particular one, *Use your own words* at the bottom
+of the menu takes any phrase you like.
+
+- **Today's sea** is one phrase for everybody, grown from the date; it turns
+  over at midnight UTC. Link: `…/mnemoquarium/?daily`.
+- **Share** gives you a link to the sea you are looking at
+  (`…/mnemoquarium/?phrase=your+words`). Same words, same sea.
+- **Every sea keeps its own save.** Opening a friend's link or today's sea never
+  touches your other runs; *Your seas* on the menu lists them.
 
 | | |
 | --- | --- |
@@ -31,6 +38,7 @@ the bottom of the menu takes any phrase you like.
 | `F` | floodlights |
 | `R` | sonar ping |
 | `M` | sea chart |
+| `P` | photo mode — `Enter` or click to take the picture |
 | `E` | dock at the Hull · aboard: use |
 | `Tab` | look in the hold |
 | `Esc` | pause |
@@ -48,6 +56,12 @@ the left to steer (push past the rim to boost), drag on the right to look, and
 hold `FIRE`, `BEAM`, `▲` and `▼` on the right. Tap a weapon in the rack to pick
 it, tap the hold gauge to look in the hold, and press and hold the dock prompt
 at the Hull. Landscape plays best.
+
+**Photo mode.** `P` (or *Photo mode* on the pause panel, `PHOTO` on a touch
+screen, the right stick click on a pad) holds the sea still and puts the
+instruments away. Look around, then `Enter` or click: you get the frame at full
+resolution, captioned with the phrase that grew the sea and where to grow your
+own, to save or share.
 
 **The surface.** Keep rising and the tower breaks through into air: a sky,
 a swell that rocks the boat, and a diesel that charges the cell for free while
@@ -210,7 +224,7 @@ python3 -m http.server 8765 --directory web
 - `web/src/world.js` — seabed, depth bands, flora, the Hull
 - `web/src/sub.js` — flight, systems, pressure, the cockpit
 - `web/src/fish.js` — shoals, boids, the capture
-- `web/src/creatures.js` — the six, and their manners
+- `web/src/creatures.js` — everything with teeth, and its manners
 - `web/src/combat.js` — harpoon, torpedoes, sonar lance, the beam
 - `web/src/hud.js` — instruments, market, drydock, manifest
 - `web/src/chart.js` — the sea chart
@@ -221,6 +235,10 @@ python3 -m http.server 8765 --directory web
 - `web/src/base.js` — the Hull on foot; `web/src/walk.js` — its collision and "use"
 - `web/src/submodel.js` — the boat's exterior, built from its upgrades
 - `web/src/ambient.js` — octopus, jellies, mantas, turtles (instanced, GPU-animated)
+- `web/src/photo.js` — photo mode; `web/src/share.js` — sea links and sharing
+- `web/src/daily.js` — today's sea; `web/src/analytics.js` — opt-in, cookie-free counting
+- `web/press/` — screenshots and link-preview images (`scripts/press-shots.mjs` makes them)
+- `marketing/` — the itch.io page copy, a press kit, and launch post drafts
 - `web/ARCHITECTURE.md` — the contract every module is written against
 
 `web/engine.js` mirrors `src/mnemoquarium/model.py` rule for rule, so the

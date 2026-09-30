@@ -6,6 +6,21 @@
     <title>Mnemoquarium: The Deep — phrase-fed submarine sea</title>
     <meta name="description" content="Dive a first-person submarine through a sea grown from a phrase. Net fish, sell them at the Hull, refit, and go deeper than the things down there would like.">
     <meta name="theme-color" content="#03060c">
+    <link rel="canonical" href="https://sebby1770.github.io/mnemoquarium/">
+    <!-- What a shared link looks like in a chat, a feed or a search result. -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Mnemoquarium">
+    <meta property="og:title" content="Mnemoquarium: The Deep — type any words, dive the sea they grow">
+    <meta property="og:description" content="A free submarine game in your browser. Every word becomes a species. Net what lives down there, walk your station, refit your boat, and go deeper than the things below would like.">
+    <meta property="og:url" content="https://sebby1770.github.io/mnemoquarium/">
+    <meta property="og:image" content="https://sebby1770.github.io/mnemoquarium/press/og.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="An underwater station with a lit dome and portholes, under the title Mnemoquarium: The Deep">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Mnemoquarium: The Deep">
+    <meta name="twitter:description" content="Type any words. Dive the sea they grow. Free in your browser.">
+    <meta name="twitter:image" content="https://sebby1770.github.io/mnemoquarium/press/og.jpg">
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="./styles.css">
@@ -106,7 +121,11 @@
               <span class="label">your sea</span>
               <strong id="start-summary">&nbsp;</strong>
             </div>
-            <button type="button" class="linkish" id="start-reroll">try another</button>
+            <div class="sea-links">
+              <button type="button" class="linkish" id="start-daily">today's sea</button>
+              <button type="button" class="linkish" id="start-reroll">try another</button>
+              <button type="button" class="linkish" id="start-share">share</button>
+            </div>
           </header>
           <div id="start-roster" class="roster"></div>
         </section>
@@ -114,7 +133,12 @@
         <div class="menu-extras">
           <details id="start-controls">
             <summary>Controls</summary>
-            <p class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> thrust · <kbd>Space</kbd> rise · <kbd>C</kbd> dive · <kbd>Shift</kbd> boost · mouse look · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> capture beam · <kbd>1</kbd>–<kbd>4</kbd> weapons · <kbd>Q</kbd> / wheel next weapon · <kbd>F</kbd> lights · <kbd>R</kbd> sonar · <kbd>M</kbd> chart · <kbd>E</kbd> dock · <kbd>Tab</kbd> hold · <kbd>Esc</kbd> pause</p>
+            <p class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> thrust · <kbd>Space</kbd> rise · <kbd>C</kbd> dive · <kbd>Shift</kbd> boost · mouse look · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> capture beam · <kbd>1</kbd>–<kbd>4</kbd> weapons · <kbd>Q</kbd> / wheel next weapon · <kbd>F</kbd> lights · <kbd>R</kbd> sonar · <kbd>M</kbd> chart · <kbd>P</kbd> photo · <kbd>E</kbd> dock · <kbd>Tab</kbd> hold · <kbd>Esc</kbd> pause</p>
+          </details>
+
+          <details id="start-seas" hidden>
+            <summary>Your seas</summary>
+            <div id="start-seas-list" class="seas-list"></div>
           </details>
 
           <details id="start-advanced">
@@ -130,7 +154,8 @@
           </details>
         </div>
 
-        <p class="tiny"><a href="https://github.com/Sebby1770/mnemoquarium">source</a> · <button type="button" class="linkish" id="start-reset">erase save</button></p>
+        <p class="tiny"><a href="https://github.com/Sebby1770/mnemoquarium">source</a><span id="start-support-wrap" hidden> · <a id="start-support" target="_blank" rel="noopener">support the game</a></span><span id="start-community-wrap" hidden> · <a id="start-community" target="_blank" rel="noopener">join the crew</a></span> · <button type="button" class="linkish" id="start-reset">erase this sea's save</button></p>
+        <p class="tiny" id="start-note" aria-live="polite"></p>
       </div>
     </div>
 
