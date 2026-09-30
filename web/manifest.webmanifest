@@ -2,7 +2,7 @@
   "name": "Mnemoquarium: The Deep",
   "short_name": "The Deep",
   "description": "A first-person submarine sea grown from a phrase. Net fish, sell them, refit, go deeper.",
-  "start_url": "./",
+  "start_url": "./play.html",
   "scope": "./",
   "display": "fullscreen",
   "orientation": "landscape",

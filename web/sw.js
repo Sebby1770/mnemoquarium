@@ -1,10 +1,16 @@
 /* Offline shell for the game. Bump CACHE when the shell files change.
    three.js is large, so it is cached on first visit and never re-fetched
    unless the version in the URL changes. */
-const CACHE = "mnemoquarium-deep-v1.8.0-research";
+const CACHE = "mnemoquarium-deep-v1.9.0";
 const SHELL = [
   "./",
   "./index.html",
+  "./play.html",
+  "./guide.html",
+  "./site.css",
+  "./src/site.js",
+  "./press/reef.jpg",
+  "./press/hangar.jpg",
   "./styles.css",
   "./icon.svg",
   "./manifest.webmanifest",
@@ -56,8 +62,9 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE)
-      // One bad path must not sink the whole install, so each file is added alone.
-      .then((cache) => Promise.all(SHELL.map((path) => cache.add(path).catch(() => {}))))
+      // A partial shell cannot run offline. Keep the previous worker if any
+      // required file fails instead of activating a broken set of modules.
+      .then((cache) => cache.addAll(SHELL.map((path) => new Request(path, { cache: "reload" }))))
       .then(() => self.skipWaiting()),
   );
 });
@@ -66,7 +73,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("mnemoquarium-deep-") && key !== CACHE).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });
@@ -103,6 +110,19 @@ self.addEventListener("fetch", (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request).then((hit) => hit || caches.match("./index.html"))),
+      .catch(async () => {
+        const cache = await caches.open(CACHE);
+        const hit = await cache.match(event.request);
+        if (hit) return hit;
+        // A phrase or daily query changes the sea, not the app shell. Serve
+        // the right page offline; never hand HTML to a failed module import.
+        if (event.request.mode === "navigate") {
+          const page = url.pathname.endsWith("/play.html") ? "./play.html"
+            : url.pathname.endsWith("/guide.html") ? "./guide.html" : "./index.html";
+          const shell = await cache.match(page);
+          if (shell) return shell;
+        }
+        return Response.error();
+      }),
   );
 });

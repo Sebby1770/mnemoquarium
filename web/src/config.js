@@ -530,7 +530,7 @@ export function zoneIndex(id) {
 export const SITE = {
   // The canonical page to share. Used instead of location so a link shared
   // from an embed (itch.io's iframe, a portal) still points somewhere real.
-  play: "https://sebby1770.github.io/mnemoquarium/",
+  play: "https://sebby1770.github.io/mnemoquarium/play.html",
   // Pay-what-you-want or tip jar: an itch.io page, Ko-fi, GitHub Sponsors...
   support: "",
   // A Discord (or any community) invite.

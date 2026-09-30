@@ -2,8 +2,15 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
-## Unreleased
+## [1.9.0] - 2026-09-30 — A home above the water
 
+- A dedicated website: an illustrated homepage, phrase generator, daily sea,
+  and field guide covering the first dive, controls, depth bands and saves.
+- The game has its own `play.html` entry. Old `?phrase=` and `?daily` links
+  still reach the game, and saves stay on the same origin.
+- Offline installs now require a complete shell. Offline game links receive
+  the game page, and failed asset requests no longer receive HTML.
+- Deployment validates the game and publishes a commit-stamped build record.
 - Research continues after the first-dive goals: the objective names a missing
   codex stamp, prioritizing nearly finished plates within the boat's depth
   rating. Completed collections receive a completion message.

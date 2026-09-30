@@ -4,8 +4,8 @@
     python3 scripts/package_itch.py          # -> dist/mnemoquarium-web-<version>.zip
 
 itch.io wants a zip with index.html at its root, which is exactly what web/
-is. Tests and press images are left out: players do not need them, and the
-zip stays small. Standard library only.
+is. Tests are left out; the website's screenshots stay in the package so
+the homepage also works offline. Standard library only.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 WEB = ROOT / "web"
 DIST = ROOT / "dist"
-SKIP_DIRS = {"tests", "press"}
+SKIP_DIRS = {"tests"}
 SKIP_FILES = {".DS_Store"}
 
 

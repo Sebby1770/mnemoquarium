@@ -1,6 +1,6 @@
 # Mnemoquarium
 
-**Play it:** [https://sebby1770.github.io/mnemoquarium/](https://sebby1770.github.io/mnemoquarium/)
+**Website:** [Mnemoquarium](https://sebby1770.github.io/mnemoquarium/) · **[Play](https://sebby1770.github.io/mnemoquarium/play.html)** · **[Field guide](https://sebby1770.github.io/mnemoquarium/guide.html)**
 
 A first-person submarine game in a sea grown from words. Every word becomes a
 species down there — its colour, its size, its temper, its price. Net what you
