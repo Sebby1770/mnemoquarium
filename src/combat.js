@@ -976,7 +976,9 @@ export class Combat {
         });
         if (!this._taughtBolts && game.log) {
           this._taughtBolts = true;
-          game.log("bolts do not fill the hold. the beam does.", "info");
+          const line = "bolts do not fill the hold. the beam does.";
+          if (game.teach) game.teach("bolts", line, "info");
+          else game.log(line, "info");
         }
       }
     }

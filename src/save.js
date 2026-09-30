@@ -228,6 +228,40 @@ function migrateLandmarks(raw) {
   return [...seen];
 }
 
+/* The logbook block: what the game has already taught you, and how far along
+   the goal chain you are. Teaching used to live in memory, so every session —
+   Continue included — replayed the whole tutorial. Ids are short and plain so
+   a hand-edited blob cannot smuggle anything else in. */
+const MAX_TAUGHT = 64;
+
+/* The codex: one small record per species index, what the best catches of
+   it have been. Keys are species indices; anything else is dropped. */
+function migrateCodex(raw) {
+  const out = {};
+  if (!isPlainObject(raw)) return out;
+  for (const [key, entry] of Object.entries(raw)) {
+    const index = Number(key);
+    if (!Number.isInteger(index) || index < 0 || index > 255 || !isPlainObject(entry)) continue;
+    out[index] = {
+      r: int(entry.r, 0, 0, 15),
+      m: int(entry.m, 0, 0, 999),
+      g: int(entry.g, 0, 0, 9999),
+      d: int(entry.d, 0, 0, MAX_DEPTH),
+      p: entry.p ? 1 : 0,
+    };
+  }
+  return out;
+}
+
+function migrateLog(raw) {
+  const src = isPlainObject(raw) ? raw : {};
+  return {
+    taught: migrateIds(src.taught, /^[a-z0-9-]{2,24}$/, MAX_TAUGHT),
+    chain: int(src.chain, 0, 0, 64),
+    codex: migrateCodex(src.codex),
+  };
+}
+
 function migrateSettings(raw) {
   const src = isPlainObject(raw) ? raw : {};
   return {
@@ -270,6 +304,7 @@ export function newProfile(phrase, seed) {
       sighted: [],
     },
     settings: { sound: true, soundSet: false, invertY: false, sensitivity: 1, quality: "auto" },
+    log: { taught: [], chain: 0, codex: {} },
     updated: now(),
   };
 }
@@ -300,6 +335,7 @@ export function migrate(raw) {
 
   profile.stats = migrateStats(src.stats);
   profile.settings = migrateSettings(src.settings);
+  profile.log = migrateLog(src.log);
   profile.updated = int(src.updated, 0, 0, Number.MAX_SAFE_INTEGER);
 
   return profile;

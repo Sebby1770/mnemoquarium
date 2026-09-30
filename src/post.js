@@ -15,23 +15,14 @@ import * as THREE from "three";
 import { zoneForDepth } from "./config.js";
 import { damp, smoothstep } from "./util.js";
 import { WATER_SUN } from "./water.js";
+import { GRADE, GRADE_GLSL } from "./grade.js";
 
 const _camPos = new THREE.Vector3();
 
 const LEVELS = 5;
 
-/* How each band is graded. The shelf is saturated and bright; by the abyss
-   the colour has drained out of everything that is not making its own. */
-const GRADE = {
-  air: { saturation: 1.08, contrast: 1.06, bloom: 0.55, lift: 0.0 },
-  shelf: { saturation: 1.18, contrast: 1.12, bloom: 0.7, lift: 0.0 },
-  kelp: { saturation: 1.12, contrast: 1.14, bloom: 0.75, lift: 0.0 },
-  twilight: { saturation: 1.02, contrast: 1.16, bloom: 0.9, lift: 0.004 },
-  midnight: { saturation: 0.95, contrast: 1.18, bloom: 1.05, lift: 0.006 },
-  abyss: { saturation: 0.92, contrast: 1.2, bloom: 1.15, lift: 0.008 },
-  // Inside the Hull: dry air, work lamps, and paint that should look like paint.
-  base: { saturation: 1.0, contrast: 1.06, bloom: 0.28, lift: 0.0 },
-};
+// The scalar grade fields eased every frame; the lift tint is eased per channel.
+const GRADE_KEYS = ["saturation", "contrast", "bloom", "lift"];
 
 const FULLSCREEN_VERT = /* glsl */ `
   varying vec2 vUv;
@@ -101,6 +92,7 @@ const COMPOSITE_FRAG = /* glsl */ `
   uniform float uSaturation;
   uniform float uContrast;
   uniform float uLift;
+  uniform vec3 uLiftTint;
   uniform float uVignette;
   uniform float uGrain;
   uniform float uAberration;
@@ -150,6 +142,8 @@ const COMPOSITE_FRAG = /* glsl */ `
     float d = hash(i + vec2(1.0, 1.0));
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
   }
+
+  ${GRADE_GLSL}
 
   void main() {
     vec2 fromCentre = vUv - 0.5;
@@ -210,12 +204,14 @@ const COMPOSITE_FRAG = /* glsl */ `
 
     float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
     c = mix(vec3(l), c, uSaturation);
-    c = (c - 0.5) * uContrast + 0.5 + uLift;
 
     float v = smoothstep(0.85, 0.2, length(fromCentre * vec2(uResolution.x / uResolution.y, 1.0) * 0.9));
     c *= mix(1.0 - uVignette, 1.0, v);
 
-    c = toSRGB(clamp(c, 0.0, 1.0));
+    /* Contrast lives in display space, after the sRGB conversion, as a curve
+       that keeps black black and white white. Applied to linear light it
+       clipped everything below about sRGB 70 — which is the whole deep. */
+    c = gradeCurve(toSRGB(clamp(c, 0.0, 1.0)));
     c += (hash(vUv * uResolution + fract(uTime) * 91.7) - 0.5) * uGrain;
     gl_FragColor = vec4(c, 1.0);
   }`;
@@ -238,7 +234,7 @@ export class PostFX {
     this.renderer = game.renderer;
     this.enabled = true;
     this.time = 0;
-    this.grade = { ...GRADE.shelf };
+    this.grade = { ...GRADE.shelf, tint: GRADE.shelf.tint.slice() };
 
     const gl2 = this.renderer.capabilities.isWebGL2;
     this.type = gl2 ? THREE.HalfFloatType : THREE.UnsignedByteType;
@@ -276,6 +272,7 @@ export class PostFX {
       uSaturation: { value: 1.1 },
       uContrast: { value: 1.1 },
       uLift: { value: 0 },
+      uLiftTint: { value: new THREE.Vector3(1, 1, 1) },
       uVignette: { value: 0.32 },
       uGrain: { value: 0.022 },
       uAberration: { value: 0.0025 },
@@ -344,11 +341,13 @@ export class PostFX {
     const depth = game.sub ? game.sub.depth : 0;
     const aboard = game.base && game.base.active;
     const target = aboard ? GRADE.base : air ? GRADE.air : GRADE[zoneForDepth(depth).id] || GRADE.shelf;
-    for (const key of Object.keys(target)) this.grade[key] = damp(this.grade[key], target[key], 1.6, dt);
+    for (const key of GRADE_KEYS) this.grade[key] = damp(this.grade[key], target[key], 1.6, dt);
+    for (let i = 0; i < 3; i += 1) this.grade.tint[i] = damp(this.grade.tint[i], target.tint[i], 1.6, dt);
     const u = this.composite.uniforms;
     u.uSaturation.value = this.grade.saturation;
     u.uContrast.value = this.grade.contrast;
     u.uLift.value = this.grade.lift;
+    u.uLiftTint.value.fromArray(this.grade.tint);
     u.uBloom.value = this.grade.bloom;
     // The glass warps a little more the deeper it is asked to hold.
     u.uAberration.value = aboard ? 0.0006 : air ? 0.0012 : 0.0018 + Math.min(1, depth / 1200) * 0.003;

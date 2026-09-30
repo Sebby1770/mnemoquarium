@@ -32,6 +32,7 @@ import {
   describeStats,
 } from "./progression.js";
 import { bearingOf, compassPoint, formatRange } from "./nav.js";
+import { STAMPS, STAMP_LABELS, codexProgress, deepMark, recommendedRefit, stampsFor } from "./goals.js";
 
 /* Scratch, hoisted so the per-frame loops never allocate. */
 const _fwd = new THREE.Vector3();
@@ -39,6 +40,8 @@ const _eye = new THREE.Vector3();
 const _dir = new THREE.Vector3();
 const _proj = new THREE.Vector3();
 const _rel = new THREE.Vector3();
+const _threat = new THREE.Vector3();
+const THREAT_MARKS = 4;
 
 /* Crosshair ring geometry, straight out of index.html (r = 18). */
 const RING_CIRCUMFERENCE = 2 * Math.PI * 18;
@@ -207,6 +210,12 @@ export class HUD {
     this.compass = pick("compass");
     this.compassStrip = pick("compass-strip");
     this.compassNeedle = pick("compass-needle");
+    // The goal's own mark on the tape, beside the way home.
+    this.compassGoal = elem("span", "compass-goal", "");
+    this.compassGoal.hidden = true;
+    this.compassGoal.setAttribute("aria-hidden", "true");
+    this.compass.appendChild(this.compassGoal);
+    this.goal = null;
 
     this.zonePlate = pick("zone-plate");
     this.readoutZone = pick("readout-zone");
@@ -232,6 +241,20 @@ export class HUD {
     this.logList = pick("log");
     this.toastNode = pick("toast");
     this.objective = pick("objective");
+
+    /* Red chevrons round the crosshair: which way the bite is coming from,
+       half a second before it lands, and which way the last one came from.
+       Top of the ring is ahead of you, bottom is behind. */
+    this.threatRing = elem("div", "threat-ring", "");
+    this.threatRing.setAttribute("aria-hidden", "true");
+    this.threatMarks = [];
+    for (let i = 0; i < THREAT_MARKS; i += 1) {
+      const mark = elem("span", "threat-mark", "");
+      this.threatRing.appendChild(mark);
+      this.threatMarks.push({ node: mark, until: 0, creature: null });
+    }
+    this.threatNext = 0;
+    this.root.appendChild(this.threatRing);
     this.hintDock = pick("hint-dock");
 
     this.panels = {
@@ -364,6 +387,9 @@ export class HUD {
 
     on("sub:zone", (p) => this.onZone(p && p.zone));
     on("sub:damage", (p) => this.onDamage(p));
+    on("creature:windup", (p) => {
+      if (p && p.creature) this.markThreat(p.creature, (Number(p.time) || 0.45) + 0.25, "windup");
+    });
     on("sub:destroyed", (p) => this.onDestroyed(p));
     on("sub:collide", (p) => {
       this.damage = clamp01(this.damage + Math.min(0.5, (p && p.speed ? p.speed : 4) / 40));
@@ -507,10 +533,48 @@ export class HUD {
     this.readoutZoneBlurb.textContent = zone.blurb || "";
   }
 
+  markThreat(creature, seconds, kind) {
+    // Re-use the mark already tracking this animal, else the oldest one.
+    let slot = this.threatMarks.find((m) => m.creature === creature && m.until > this.time);
+    if (!slot) {
+      slot = this.threatMarks[this.threatNext];
+      this.threatNext = (this.threatNext + 1) % this.threatMarks.length;
+    }
+    slot.creature = creature;
+    slot.until = this.time + seconds;
+    slot.node.dataset.kind = kind;
+    slot.node.dataset.show = "1";
+  }
+
+  updateThreatMarks() {
+    const cam = this.game.camera;
+    for (const m of this.threatMarks) {
+      if (!m.creature) continue;
+      if (this.time > m.until || !m.creature.alive) {
+        m.node.dataset.show = "0";
+        m.creature = null;
+        continue;
+      }
+      // Bearing of the animal in the camera's own frame: 0 is dead ahead.
+      _threat.copy(m.creature.position).applyMatrix4(cam.matrixWorldInverse);
+      const angle = Math.atan2(_threat.x, -_threat.z) * 180 / Math.PI;
+      const q = Math.round(angle);
+      if (m.angle !== q) {
+        m.angle = q;
+        m.node.style.transform = `rotate(${q}deg) translateY(-78px)`;
+      }
+    }
+  }
+
   onDamage(payload) {
+    // A blow from something with a body points at where it came from.
+    const source = payload && payload.source;
+    if (source && source.position && !payload.continuous) this.markThreat(source, 0.9, "hit");
     const amount = Number(payload && payload.amount) || 0;
     const max = Math.max(1, this.sub.hullMax || 100);
-    this.damage = clamp01(this.damage + clamp(amount / (max * 0.28), 0.08, 1));
+    // A slow pressure trickle tints the edges; only a real blow flashes.
+    const floor = payload && payload.continuous ? 0.02 : 0.08;
+    this.damage = clamp01(this.damage + clamp(amount / (max * 0.28), floor, 1));
     this.pulse(this.gauges.hull.root);
   }
 
@@ -563,6 +627,7 @@ export class HUD {
     this.updateCredits(step);
     this.updateToast(step);
     this.updateOverlays(step);
+    this.updateThreatMarks();
 
     if (this.sonarReady > 0) {
       this.sonarReady = Math.max(0, this.sonarReady - step);
@@ -693,6 +758,8 @@ export class HUD {
     }
     this.setAttr(this.compassNeedle, "needleEdge",
       edge ? (rel < 0 ? "left" : "right") : "on", "edge");
+    this.updateGoalMark(heading, width);
+
     const range = _rel.length();
     // Drawn by CSS beside the needle: as text inside a 2px span it wrapped
     // one character per line straight across the tape.
@@ -1081,6 +1148,27 @@ export class HUD {
     this.setAttr(this.sonarNote, "sonarState", left > 0 ? "charging" : "ready", "state");
   }
 
+  /* Place the goal's diamond on the compass tape the same way the needle is
+     placed, or hide it when the goal is not a place (catch a fish, save up). */
+  updateGoalMark(heading, width) {
+    const target = this.goal && this.goal.target;
+    const station = this.world.stationPosition;
+    const isHome = target && Math.abs(target.x - station.x) < 1 && Math.abs(target.z - station.z) < 1;
+    const show = !!target && !isHome;
+    if (this.compassGoal.hidden === show) this.compassGoal.hidden = !show;
+    if (!show) return;
+    const sub = this.sub;
+    const rel = shortDeg(bearingOf(target.x - sub.position.x, target.z - sub.position.z) - heading);
+    const edge = Math.abs(rel * COMPASS_PX_PER_DEG) > width * 0.47;
+    const pct = clamp(50 + (rel * COMPASS_PX_PER_DEG) / width * 100, 3, 97);
+    const pq = Math.round(pct * 2) / 2;
+    if (this.last.goalMark !== pq) {
+      this.last.goalMark = pq;
+      this.compassGoal.style.left = `${pq}%`;
+    }
+    this.setAttr(this.compassGoal, "goalEdge", edge ? (rel < 0 ? "left" : "right") : "on", "edge");
+  }
+
   updateObjective() {
     const sub = this.sub;
     const stats = this.game.stats || {};
@@ -1091,9 +1179,12 @@ export class HUD {
     const hullT = sub.hull / Math.max(1, sub.hullMax || SUB.hullBase);
 
     let text = "";
+    const goal = this.game.logbook ? this.game.logbook.objective() : null;
+    this.goal = goal;
     if (held >= slots) text = "the hold is full — take it back to the Hull";
     else if (hullT < 0.28) text = "the hull is failing — get to the clamps";
     else if (sub.depth > rating) text = "past your rating — climb, or buy casing";
+    else if (goal && goal.text) text = goal.text;
     else {
       sub.forward(_fwd);
       _rel.set(
@@ -1135,7 +1226,9 @@ export class HUD {
     const li = elem("li", "log-line", body);
     li.dataset.kind = kind || "info";
     this.logList.appendChild(li);
-    this.logLines.push({ node: li, born: this.time, text: body, repeats: 1 });
+    // Written while docked or aboard, where the log is hidden: it gets its
+    // full life from the moment it can actually be seen.
+    this.logLines.push({ node: li, born: this.time, text: body, repeats: 1, unseen: this.mode !== "dive" });
     while (this.logLines.length > LOG_LINES) {
       const old = this.logLines.shift();
       old.node.remove();
@@ -1204,7 +1297,15 @@ export class HUD {
       this.refreshPause();
     }
     if (mode === "dead") this.writeDeath();
-    if (mode === "dive") this.measure();
+    if (mode === "dive") {
+      this.measure();
+      for (const line of this.logLines) {
+        if (line.unseen) {
+          line.unseen = false;
+          line.born = this.time;
+        }
+      }
+    }
   }
 
   setCargoOpen(open) {
@@ -1299,8 +1400,12 @@ export class HUD {
       const affordable = !maxed && profile.credits >= cost;
       return { up, level, maxLevel, cost, maxed, affordable };
     });
+    /* The game says "pressure casing first", so the drydock should too: the
+       recommended refit is pinned above everything, with its reason, instead
+       of sorting ninth among the cheaper things you could buy instead. */
+    const pick = recommendedRefit(profile, this.game.stats, (id) => upgradeCost(profile.upgrades, id));
     rows.sort((a, b) => {
-      const rank = (r) => (r.maxed ? 2 : r.affordable ? 0 : 1);
+      const rank = (r) => (pick && r.up.id === pick.id ? -1 : r.maxed ? 2 : r.affordable ? 0 : 1);
       const d = rank(a) - rank(b);
       if (d) return d;
       // Within a group, cheapest first: that is the next thing you will buy.
@@ -1316,13 +1421,15 @@ export class HUD {
       const row = elem("article", "shop-row");
       row.dataset.id = up.id;
       row.dataset.state = maxed ? "maxed" : affordable ? "ready" : "poor";
+      const recommended = pick && pick.id === up.id;
+      if (recommended) row.dataset.recommended = "1";
 
       row.appendChild(elem("span", "shop-icon", up.icon));
 
       const main = elem("div", "shop-main");
       main.appendChild(elem("strong", null, up.name));
       const fitted = level === 0 && up.values[0] === 0 ? "not fitted" : `mark ${level} of ${maxLevel}`;
-      main.appendChild(elem("span", "shop-sub", fitted));
+      main.appendChild(elem("span", "shop-sub", recommended ? `recommended · ${pick.reason}` : fitted));
       row.appendChild(main);
 
       const change = elem("div", "shop-change");
@@ -1380,6 +1487,10 @@ export class HUD {
     const seen = new Set(record.discovered || []);
     const roster = this.ecology.roster();
     const list = document.createDocumentFragment();
+    const codex = (profile.log && profile.log.codex) || {};
+    const progress = codexProgress(codex, this.ecology.species);
+    const head = elem("h3", "codex-head", `codex · ${progress.have} of ${progress.total} stamps`);
+    list.appendChild(head);
     for (const entry of roster) {
       const zone = zoneById(entry.zoneId);
       const row = elem("div", "row species-row");
@@ -1395,7 +1506,26 @@ export class HUD {
         ? `"${entry.word}" · ${zone.name}`
         : `${zone.name} · never in the hold`));
 
+      const specimen = this.ecology.species[entry.index];
+      const recorded = stampsFor(codex[entry.index], specimen);
+      const needed = STAMPS.filter((id) => !recorded[id]).map((id) =>
+        id === "deep" ? `caught at ${Math.ceil(deepMark(zone))} m+`
+          : id === "rarer" && specimen.rarity === "mythic" ? "a mythic specimen" : STAMP_LABELS[id]);
+      main.appendChild(elem("span", "row-sub", needed.length
+        ? `next stamps: ${needed.join(" · ")}` : "full plate · all four stamps recorded"));
+
       const tail = elem("div", "row-tail");
+      // One pip per stamp: caught, a rarer one, a mutant, from deep in its band.
+      const stamps = stampsFor(codex[entry.index], this.ecology.species[entry.index]);
+      const pips = elem("span", "codex-pips", "");
+      for (const id of STAMPS) {
+        const pip = elem("span", "codex-pip", "");
+        pip.dataset.on = stamps[id] ? "1" : "0";
+        pip.title = id === "rarer" && specimen.rarity === "mythic" ? "a mythic specimen" : STAMP_LABELS[id];
+        pips.appendChild(pip);
+      }
+      pips.setAttribute("aria-label", STAMPS.filter((id) => stamps[id]).map((id) => STAMP_LABELS[id]).join(", ") || "no stamps");
+      tail.appendChild(pips);
       tail.appendChild(elem("span", "row-rarity", (RARITY[entry.rarity] || RARITY.common).label));
       tail.appendChild(elem("span", "money", `${formatCredits(entry.baseValue)} base`));
 
@@ -1494,14 +1624,17 @@ export class HUD {
     else if (cause) headline = `${cause} took the rest of it`;
     this.setText(this.deadHeadline, "deadHead", headline);
 
-    const lost = Math.round((profile.credits || 0) * SUB.respawnPenalty);
+    const free = !!this.game.freeTow;
+    const lost = free ? 0 : Math.round((profile.credits || 0) * SUB.respawnPenalty);
     const parts = [];
     if (cargo.length) {
       parts.push(`${cargo.length} ${cargo.length === 1 ? "specimen" : "specimens"} went back into the dark, ${formatCredits(worth)} credits of it`);
     } else {
       parts.push("the hold was empty, at least");
     }
-    parts.push(`the Hull takes ${formatCredits(lost)} credits for the tow`);
+    parts.push(free
+      ? "the Hull tows new boats for free. it will not always"
+      : `the Hull takes ${formatCredits(lost)} credits for the tow`);
     parts.push("the sea keeps the same shape. go back down.");
     this.setText(this.deadDetail, "deadDetail", `${parts.join(" · ")}`);
   }

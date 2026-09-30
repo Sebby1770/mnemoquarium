@@ -22,6 +22,7 @@ const CORPSE_SINK = 3.5;
 const _v = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
+const _shove = new THREE.Vector3();   // The Sounding pushing the boat out of its way
 const _q = new THREE.Quaternion();
 const _m = new THREE.Matrix4();
 const _up = new THREE.Vector3(0, 1, 0);
@@ -1072,7 +1073,17 @@ export class CreatureManager {
     // Nothing hunts you in the station's floodlights.
     if (this.game.world.distanceToStation(sub.position) < SEA.dockRadius * 2.4) return;
 
-    const table = zone.hostiles || [];
+    /* "One to a sea" meant nothing until now: nothing read the flag, so Old
+       Grey respawned like any reef shark. A unique beast is never two at once,
+       and once killed it is gone from this sea for good. */
+    const kills = (this.game.profile && this.game.profile.stats && this.game.profile.stats.kills) || {};
+    const table = (zone.hostiles || []).filter(([k]) => {
+      const t = CREATURES[k];
+      if (!t || !t.unique) return true;
+      if (kills[k] > 0) return false;
+      for (const c of this.all) if (c.alive && c.type.id === k) return false;
+      return true;
+    });
     if (!table.length) return;
     let id = weightedPick(this.rng, table);
     if (!id) return;
@@ -1149,6 +1160,7 @@ export class CreatureManager {
       wander: position.clone(),
       wanderTimer: 0,
       windup: 0,
+      striking: false,
       dying: 0,
       buried: false,
       lunge: 0,
@@ -1234,6 +1246,10 @@ export class CreatureManager {
     }
 
     this.threatLevel = damp(this.threatLevel, clamp01(threat), 3, dt);
+    /* The hunting chord in audio.js was built and never told anything. Only
+       while diving: the sea still ticks slowly behind the pause menu and the
+       death screen, and neither should keep the chord playing. */
+    if (this.game.audio && this.game.mode === "dive") this.game.audio.setThreat(this.threatLevel);
   }
 
   _despawn() {
@@ -1272,6 +1288,21 @@ export class CreatureManager {
       if (c.stateTime > 9 || c.hp > c.hpMax * 0.45) {
         c.state = "patrol";
         c.stateTime = 0;
+      }
+      return;
+    }
+
+    /* Some things are not hunting you. The Sounding keeps to its own errand
+       through the bands and will not turn for you; being in its way is the
+       danger, and hurting it is how you change its mind. */
+    if (type.indifferent && !c.provoked) {
+      c.aggro = false;
+      c.state = "patrol";
+      if (distance < c.radius + 5 && this.time - c.lastAttack > type.attackCooldown) {
+        c.lastAttack = this.time;
+        sub.damage(type.damage * 0.5, c);
+        sub.nudge(_shove.copy(sub.position).sub(c.position).setLength(9));
+        this.game.bus.emit("creature:attack", { creature: c, damage: type.damage * 0.5 });
       }
       return;
     }
@@ -1317,7 +1348,12 @@ export class CreatureManager {
       if (c.state !== "attack") {
         c.state = "attack";
         c.stateTime = 0;
-        c.windup = type.boss ? 0.9 : 0.45;
+        /* Only wind up at once if the cooldown allows a bite that soon;
+           otherwise _attack schedules it. Backing out of range and letting
+           it close again must not buy the animal a free, early bite. */
+        const lead = type.boss ? 0.9 : 0.45;
+        if (this.time - c.lastAttack >= type.attackCooldown - lead) this._windup(c);
+        else c.striking = false;
       }
       this._attack(c, dt, sub, distance);
     } else {
@@ -1325,15 +1361,32 @@ export class CreatureManager {
     }
   }
 
+  /* Commit to a strike: the jaws start opening now and land when the windup
+     runs out. Everything that warns the player — the rising hiss, the red
+     chevron — hangs off this one event, so it is never a lie: a windup that
+     starts is a bite that lands unless you get out of range. */
+  _windup(c) {
+    const time = c.type.boss ? 0.9 : 0.45;
+    c.windup = time;
+    c.striking = true;
+    this.game.bus.emit("creature:windup", { creature: c, time });
+  }
+
   _attack(c, dt, sub, distance) {
     const type = c.type;
     if (c.windup > 0) {
       c.windup -= dt;
+      if (c.windup > 0) return;
+    }
+    if (!c.striking) {
+      // Start the next windup early enough that the bite lands on the
+      // cooldown, so warning the player costs the animal no damage.
+      const lead = type.boss ? 0.9 : 0.45;
+      if (this.time - c.lastAttack >= type.attackCooldown - lead) this._windup(c);
       return;
     }
-    if (this.time - c.lastAttack < type.attackCooldown) return;
+    c.striking = false;
     c.lastAttack = this.time;
-    c.windup = type.boss ? 0.9 : 0.45;
 
     // The wraith would rather take a memory than a bite out of the hull.
     if (type.memoryDrain && Math.random() < 0.5 && this._forget(c)) return;
@@ -1744,6 +1797,7 @@ export class CreatureManager {
     creature.revealed = Math.max(creature.revealed, this.time + 2);
 
     // Hitting something is how you introduce yourself.
+    if (!opts.silent) creature.provoked = true;
     if (!creature.aggro && !opts.silent) {
       creature.aggro = true;
       creature.state = "hunt";

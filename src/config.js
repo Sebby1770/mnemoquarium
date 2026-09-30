@@ -60,7 +60,7 @@ export const ZONES = [
     snow: 0.55,
     valueMultiplier: 3.2,
     hostileBudget: 4,
-    hostiles: [["shark", 0.18], ["squid", 0.24], ["angler", 0.12], ["lamprey", 0.14], ["trapjaw", 0.12], ["grandmother", 0.1], ["inkwidow", 0.18], ["choir", 0.12]],
+    hostiles: [["shark", 0.18], ["squid", 0.24], ["angler", 0.12], ["lamprey", 0.14], ["trapjaw", 0.12], ["grandmother", 0.1], ["inkwidow", 0.18], ["choir", 0.12], ["sperm", 0.05]],
     blurb: "the last of the light, spending itself",
   },
   {
@@ -74,7 +74,7 @@ export const ZONES = [
     snow: 0.8,
     valueMultiplier: 6.0,
     hostileBudget: 4,
-    hostiles: [["squid", 0.22], ["angler", 0.18], ["leviathan", 0.12], ["trapjaw", 0.16], ["gulper", 0.16], ["ninefold", 0.1], ["grandmother", 0.06], ["choir", 0.18], ["inkwidow", 0.1]],
+    hostiles: [["squid", 0.22], ["angler", 0.18], ["leviathan", 0.12], ["trapjaw", 0.16], ["gulper", 0.16], ["ninefold", 0.1], ["grandmother", 0.06], ["choir", 0.18], ["inkwidow", 0.1], ["sperm", 0.06]],
     blurb: "no light but the light that wants you closer",
   },
   {
@@ -499,7 +499,9 @@ export const CREATURES = {
 };
 
 export const ECONOMY = {
-  startingCredits: 150,
+  // One real purchase at the first dock, even with an empty hold (Floodlights
+  // mk1 is 160) — a drydock where every button is grey teaches nothing.
+  startingCredits: 180,
   sellBonusPerRarity: 1.0,
   trophyValueShare: 1.0,       // bounty is paid in full on the kill
   depthBonusPerKm: 0.35,       // extra fraction of value per km of capture depth
@@ -528,7 +530,7 @@ export function zoneIndex(id) {
 export const SITE = {
   // The canonical page to share. Used instead of location so a link shared
   // from an embed (itch.io's iframe, a portal) still points somewhere real.
-  play: "https://sebby1770.github.io/mnemoquarium/",
+  play: "https://sebby1770.github.io/mnemoquarium/play.html",
   // Pay-what-you-want or tip jar: an itch.io page, Ko-fi, GitHub Sponsors...
   support: "",
   // A Discord (or any community) invite.

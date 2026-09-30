@@ -115,3 +115,16 @@ export function pixelRatioFor(devicePixelRatio, scale) {
   const dpr = Math.min(2, Number(devicePixelRatio) > 0 ? Number(devicePixelRatio) : 1);
   return Math.max(0.5, round2(dpr * scale));
 }
+
+/* How much of the optional scenery to draw: 0 low, 1 medium, 2 high. The
+   governor only ever traded resolution; particle counts and the like follow
+   the same judgement, so a laptop that has had to drop resolution also gets
+   fewer sparks, and "Sharp" / "Fast" pin both. */
+export function effectsTier(mode, scale) {
+  if (mode === "high") return 2;
+  if (mode === "low") return 0;
+  const s = Number.isFinite(scale) ? scale : SCALE.max;
+  if (s >= SCALE.max - 0.05) return 2;
+  if (s >= SCALE.low + 0.05) return 1;
+  return 0;
+}
