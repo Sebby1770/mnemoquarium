@@ -265,10 +265,9 @@ function migrateLog(raw) {
 function migrateSettings(raw) {
   const src = isPlainObject(raw) ? raw : {};
   return {
-    /* Sound is on unless the player has turned it off themselves. Saves from
-       before this were muted by default, not by choice, so a save without
-       soundSet gets sound back. */
-    sound: src.soundSet === true ? bool(src.sound, true) : true,
+    /* Quiet by default. Keep an explicit sound choice across releases. */
+    sound: src.soundSet === true ? bool(src.sound, false) : false,
+    volume: Math.max(0, Math.min(1, num(src.volume, 0.35))),
     soundSet: src.soundSet === true,
     invertY: bool(src.invertY, false),
     // The pause panel's slider is 20..300 percent; store it as a plain factor.
@@ -303,7 +302,7 @@ export function newProfile(phrase, seed) {
       landmarks: [],
       sighted: [],
     },
-    settings: { sound: true, soundSet: false, invertY: false, sensitivity: 1, quality: "auto" },
+    settings: { sound: false, soundSet: false, volume: 0.35, invertY: false, sensitivity: 1, quality: "auto" },
     log: { taught: [], chain: 0, codex: {} },
     updated: now(),
   };

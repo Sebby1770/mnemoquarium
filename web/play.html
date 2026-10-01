@@ -133,7 +133,7 @@
         <div class="menu-extras">
           <details id="start-controls">
             <summary>Controls</summary>
-            <p class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> thrust · <kbd>Space</kbd> rise · <kbd>C</kbd> dive · <kbd>Shift</kbd> boost · mouse look · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> capture beam · <kbd>1</kbd>–<kbd>4</kbd> weapons · <kbd>Q</kbd> / wheel next weapon · <kbd>F</kbd> lights · <kbd>R</kbd> sonar · <kbd>M</kbd> chart · <kbd>P</kbd> photo · <kbd>E</kbd> dock · <kbd>Tab</kbd> hold · <kbd>Esc</kbd> pause</p>
+            <p class="keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> thrust · <kbd>Space</kbd> rise · <kbd>C</kbd> dive · <kbd>Shift</kbd> boost · mouse look · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> capture beam · <kbd>1</kbd>–<kbd>4</kbd> weapons · <kbd>Q</kbd> / wheel next weapon · <kbd>F</kbd> lights · <kbd>R</kbd> sonar · <kbd>M</kbd> chart · <kbd>P</kbd> photo · <kbd>V</kbd> walk inside · <kbd>E</kbd> dock · <kbd>Tab</kbd> hold · <kbd>Esc</kbd> pause</p>
           </details>
 
           <details id="start-seas" hidden>
@@ -170,7 +170,8 @@
         </header>
         <nav class="tabs" id="station-tabs">
           <button type="button" data-tab="market" class="active">Market</button>
-          <button type="button" data-tab="drydock">Drydock</button>
+          <button type="button" data-tab="shipyard">Shipyard</button>
+          <button type="button" data-tab="drydock">Quick refits</button>
           <button type="button" data-tab="log">Manifest</button>
         </nav>
         <div class="tab-body" id="station-market" data-tab="market">
@@ -180,6 +181,7 @@
           </div>
           <div id="market-list" class="stack"></div>
         </div>
+        <div class="tab-body" id="station-shipyard" data-tab="shipyard" hidden><div id="shipyard"></div></div>
         <div class="tab-body" id="station-drydock" data-tab="drydock" hidden>
           <div id="shop-list" class="stack"></div>
         </div>
@@ -208,9 +210,11 @@
         <div id="pause-stats" class="stats"></div>
         <div class="start-actions">
           <button type="button" class="primary" id="btn-resume">Resume</button>
+          <button type="button" id="btn-cabin">Walk inside submarine · V</button>
           <button type="button" id="btn-abandon">Surface (lose the hold)</button>
         </div>
-        <label class="row-toggle"><input type="checkbox" id="toggle-sound"> Sound</label>
+        <label class="row-toggle"><input type="checkbox" id="toggle-sound"> Enable sound · quiet mix</label>
+        <label class="row-toggle"><span>Sound volume</span><input type="range" id="range-volume" min="0" max="100" value="35" aria-label="Sound volume"></label>
         <label class="row-toggle"><input type="checkbox" id="toggle-invert"> Invert mouse Y</label>
         <label class="row-toggle"><span>Look sensitivity</span><input type="range" id="range-sens" min="20" max="300" value="100"></label>
       </div>

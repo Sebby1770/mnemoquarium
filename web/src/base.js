@@ -19,6 +19,7 @@
 
 import * as THREE from "three";
 
+import { Cabin } from "./cabin.js";
 import { SUB } from "./config.js";
 import { clamp, damp, formatCredits } from "./util.js";
 import { spindle } from "./geo.js";
@@ -213,6 +214,8 @@ export class Base {
 
     this._build();
     this._buildEnvironment();
+    this.area = "dock";
+    this.cabin = new Cabin(game);
     this._buildHud();
     this._bind();
   }
@@ -425,8 +428,8 @@ export class Base {
     this._terminal("drydock", "DRYDOCK", "refit the boat", 9.3, -1.6, -Math.PI / 2 + 0.35);
     this._terminal("log", "MANIFEST", "the record", 4.6, -18.9, 0.2);
     // The hatch: stand in the railing gap and look at the boat.
-    this.items.push({ id: "hatch", label: "Board the boat · dive", x: 0.6, z: -2.4, reach: 2.4 });
-    const hatchSign = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture("HATCH", "board · dive"), transparent: true }));
+    this.items.push({ id: "hatch", label: "Board submarine · walk inside", x: 0.6, z: -2.4, reach: 2.4 });
+    const hatchSign = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture("HATCH", "walk inside"), transparent: true }));
     this.disposables.push(hatchSign.material.map, hatchSign.material);
     hatchSign.position.set(0.6, 2.9, -3.2);
     hatchSign.scale.set(1.8, 0.56, 1);
@@ -440,9 +443,9 @@ export class Base {
 
     /* Light. Warm work lamps overhead, the pool's glow from below, a cold
        fill from the windows, and a key on the boat so the refit reads. */
-    this.scene.add(new THREE.HemisphereLight(0x8fb8d0, 0x2a241c, 1.0));
+    this.scene.add(new THREE.HemisphereLight(0xb2d6e0, 0x726854, 1.6));
     for (const [x, z] of [[-7, -7], [7, -7], [-7, 7], [7, 7], [0, -15.5]]) {
-      const l = new THREE.PointLight(0xffd9a0, 70, 26, 1.1);
+      const l = new THREE.PointLight(0xffe5c2, 24, 26, 1.4);
       l.position.set(x, z < -12 ? 3.9 : 8.2, z);
       this.scene.add(l);
       const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.5, 0.3, 12, 1, true), trim);
@@ -614,6 +617,7 @@ export class Base {
         <span class="label">the hull · tender station</span>
         <strong class="base-credits"></strong>
         <p class="base-goal"></p>
+        <div class="base-tools"><button type="button" class="base-board">Board submarine</button><button type="button" class="base-helm" hidden>Take the helm</button><button type="button" class="base-exit" hidden>Disembark</button></div>
       </div>
       <div class="base-dot"></div>
       <button type="button" class="base-prompt" hidden></button>
@@ -623,6 +627,12 @@ export class Base {
       </div>`;
     document.body.appendChild(root);
     this.hud = root;
+    this.boardBtn = root.querySelector(".base-board");
+    this.helmBtn = root.querySelector(".base-helm");
+    this.exitBtn = root.querySelector(".base-exit");
+    this.boardBtn.onclick = () => this.game.enterCabin();
+    this.helmBtn.onclick = () => this.takeHelm();
+    this.exitBtn.onclick = () => this.disembark();
     this.hudCredits = root.querySelector(".base-credits");
     this.hudPrompt = root.querySelector(".base-prompt");
     this.hudFitted = root.querySelector(".base-fitted");
@@ -700,6 +710,7 @@ export class Base {
     this.offs = [
       game.bus.on("mode", (e) => this._onMode(e.mode, e.prev)),
       game.bus.on("economy:upgrade", (e) => {
+        this.cabin.refresh();
         if (this._rebuildSub()) this._celebrate(e && e.id);
       }),
       game.bus.on("economy:credits", () => this._writeHud()),
@@ -734,6 +745,7 @@ export class Base {
   }
 
   exit() {
+    this.restoreDock();
     this.active = false;
     for (const k of Object.keys(this.keys)) this.keys[k] = false;
     this.hud.hidden = true;
@@ -743,10 +755,21 @@ export class Base {
     const game = this.game;
     if (game.mode !== "base" || !this.focus) return;
     const id = this.focus.id;
+    if (this.area === "cabin") {
+      if (id === "helm") this.takeHelm();
+      else if (id === "exit-cabin") this.disembark();
+      else if (id === "engineering") {
+        if (game.sub.docked) { game.setMode("station"); game.hud.selectTab("shipyard"); }
+        else game.toast(`Engineering · hull ${Math.round(game.sub.hull)} / ${game.stats.hullMax} · casing ${game.stats.pressureRating} m · refits at the Hull`);
+      }
+      else if (id === "power") game.toast(`Cell array · ${Math.round(game.sub.battery)} / ${game.stats.batteryMax} · mark ${game.profile.upgrades.battery}`);
+      else if (id === "cargo") game.toast(`Specimen storage · ${game.profile.cargo.length} / ${game.stats.cargoSlots} occupied`);
+      return;
+    }
     if (game.audio) game.audio.sfx("click");
     if (id === "hatch") {
       // The pointer lock, if any, is kept: the boat wants it next.
-      game.undock();
+      game.enterCabin();
       return;
     }
     if (id === "tank") {
@@ -757,7 +780,41 @@ export class Base {
     }
     // A terminal: open the station panel on its tab, with the room behind it.
     game.setMode("station");
-    if (game.hud) game.hud.selectTab(id);
+    if (game.hud) game.hud.selectTab(id === "drydock" ? "shipyard" : id);
+  }
+
+  board() {
+    if (this.area === "cabin") return;
+    this.dockState = { scene: this.scene, boxes: this.boxes, items: this.items, pos: this.pos, yaw: this.yaw, pitch: this.pitch };
+    this.area = "cabin"; this.scene = this.cabin.scene; this.boxes = this.cabin.boxes; this.items = this.cabin.items;
+    this.pos = { x: 0, z: 2.6 }; this.yaw = 0; this.pitch = 0; this.focus = null;
+    this.keys = Object.create(null); this.lookDX = 0; this.lookDY = 0;
+    this.cabin.refresh(); this.boardBtn.hidden = true; this.helmBtn.hidden = false; this.exitBtn.hidden = !this.game.sub.docked;
+    this.hud.querySelector(".label").textContent = "your submarine · pressure hull";
+    this.hudFitted.textContent = "Helm forward · engineering port · battery bank starboard · hatch aft";
+    this.backBtn.textContent = "Return to cabin";
+    this._placeCamera();
+  }
+
+  restoreDock() {
+    if (this.area !== "cabin") return;
+    Object.assign(this, this.dockState); this.dockState = null; this.area = "dock"; this.focus = null;
+    this.keys = Object.create(null); this.lookDX = 0; this.lookDY = 0;
+    this.boardBtn.hidden = false; this.helmBtn.hidden = true; this.exitBtn.hidden = true;
+    this.hud.querySelector(".label").textContent = "the hull · tender station";
+    this.backBtn.textContent = "Walk the Hull";
+    this._writeHud();
+  }
+
+  takeHelm() {
+    this.restoreDock();
+    if (this.game.sub.docked) this.game.undock();
+    else this.game.setMode("dive");
+  }
+
+  disembark() {
+    if (!this.game.sub.docked) { this.game.toast("The hatch is secured at sea. Return to the helm to dock."); return; }
+    this.restoreDock(); this._placeCamera();
   }
 
   /* ----------------------------------------------------------- per frame -- */
@@ -765,10 +822,17 @@ export class Base {
   update(dt) {
     if (!this.active) return;
     this.time += dt;
+    if (this.area === "cabin") {
+      this.cabin.update(dt);
+      if (this.game.mode === "base") this._walk(dt);
+      this._placeCamera();
+      this.hudGoal.textContent = this.game.sub.docked ? "Clamps secured · fit components at engineering, or take the helm to launch" : "Holding position · explore your boat, then return to the helm";
+      return;
+    }
     this.poolMat.uniforms.uTime.value = this.time;
     for (const m of this.windowMats) m.uniforms.uTime.value = this.time;
     for (let i = 0; i < this.poolGlows.length; i += 1) {
-      this.poolGlows[i].intensity = 8 + Math.sin(this.time * 1.3 + i * 2) * 1.5;
+      this.poolGlows[i].intensity = 3 + Math.sin(this.time * 1.3 + i * 2) * 0.3;
     }
 
     // The boat rides the pool, and the screw idles.
@@ -940,6 +1004,8 @@ export class Base {
   }
 
   dispose() {
+    this.restoreDock();
+    this.cabin.dispose();
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     document.removeEventListener("mousemove", this.onMouseMove);

@@ -67,7 +67,7 @@ let nextFishId = 1;
    deep is full of. An unknown name falls back to a tetra rather than throwing. */
 export const FISH_KINDS = [
   "tetra", "guppy", "angel", "betta", "catfish", "eel",
-  "ray", "ribbon", "jelly", "grouper", "hatchet",
+  "ray", "ribbon", "jelly", "grouper", "hatchet", "butterfly", "lionfish", "pipefish",
 ];
 
 /* Plans that only occur down here. If ecology.js ever starts naming one of
@@ -79,6 +79,9 @@ const DEEP_PLANS = ["ray", "ribbon", "jelly", "grouper", "hatchet"];
    the travelling wave fit along the body, and `rate` is beats per second at
    a standstill. All of it happens on the GPU; the CPU only carries a phase. */
 const SWIM = {
+  butterfly: { lateral: 0.038, flap: 0.04, pulse: 0, wave: 4.0, rate: 4.2 },
+  lionfish: { lateral: 0.028, flap: 0.035, pulse: 0, wave: 4.0, rate: 2.8 },
+  pipefish: { lateral: 0.055, flap: 0, pulse: 0, wave: 11, rate: 4.0 },
   tetra:   { lateral: 0.055, flap: 0.00, pulse: 0.00, wave: 5.2, rate: 6.6 },
   guppy:   { lateral: 0.060, flap: 0.00, pulse: 0.00, wave: 5.0, rate: 6.2 },
   angel:   { lateral: 0.034, flap: 0.00, pulse: 0.00, wave: 4.0, rate: 4.4 },
@@ -406,7 +409,34 @@ function hatchetBody(parts) {
   }
 }
 
+function butterflyBody(parts) {
+  parts.push(spindle({length:0.64,radius:0.29,flattenX:0.24,rings:20,segments:14,profile:t=>Math.pow(Math.sin(Math.PI*t),0.62)}));
+  for(const side of [-1,1]) {
+    const fin=verticalFin({length:0.43,width:0.30,taper:0.18,sweep:0.55});
+    fin.translate(0,side*0.12,0.1);parts.push(fin);
+  }
+  const tail=verticalFin({length:0.21,width:0.22,taper:0.85});tail.translate(0,0,-0.29);parts.push(tail);
+  const snout=spindle({length:0.16,radius:0.035,rings:7,segments:8});snout.translate(0,0,0.33);parts.push(snout);
+}
+function lionfishBody(parts) {
+  parts.push(spindle({length:0.68,radius:0.16,flattenX:0.8,rings:20,segments:14}));
+  for(const side of [-1,1]) for(let i=0;i<7;i++) {
+    const tip=new THREE.Vector3(side*(0.24+i*0.023),-0.06-i*0.008,0.16-i*0.065);
+    parts.push(tube([new THREE.Vector3(side*0.08,0,0.13),tip],{radius:0.008,taper:0.05,segments:5,radial:4}));
+    const fan=blade({length:0.42,width:0.07,taper:0.15,sweep:0.4});fan.rotateY(side*(0.8+i*0.16));fan.translate(side*0.09,-0.02,0.12);parts.push(fan);
+  }
+  for(let i=0;i<8;i++)parts.push(tube([new THREE.Vector3(0,0.1,0.18-i*0.06),new THREE.Vector3(0,0.32-i*0.014,0.12-i*0.06)],{radius:0.008,taper:0.05,segments:3,radial:4}));
+  const tail=verticalFin({length:0.24,width:0.25,taper:0.8});tail.translate(0,0,-0.28);parts.push(tail);
+}
+function pipefishBody(parts) {
+  parts.push(spindle({length:0.92,radius:0.038,rings:26,segments:10,profile:t=>0.45+0.55*Math.sin(Math.PI*t)}));
+  const snout=spindle({length:0.23,radius:0.017,rings:8,segments:8});snout.translate(0,0,0.49);parts.push(snout);
+  const dorsal=verticalFin({length:0.20,width:0.11,taper:0.75});dorsal.translate(0,0.032,0.05);parts.push(dorsal);
+  const tail=verticalFin({length:0.1,width:0.1,taper:0.8});tail.translate(0,0,-0.45);parts.push(tail);
+}
+
 const BUILDERS = {
+  butterfly: butterflyBody, lionfish: lionfishBody, pipefish: pipefishBody,
   tetra: tetraBody,
   guppy: guppyBody,
   angel: angelBody,
@@ -420,10 +450,18 @@ const BUILDERS = {
   hatchet: hatchetBody,
 };
 
-function bodyForKind(kind) {
+export function bodyForKind(kind) {
   const parts = [];
   const build = BUILDERS[kind] || BUILDERS.tetra;
   build(parts);
+  // Eyes are geometry, so they remain readable under any pigment pattern.
+  const paint = (g, color) => {const c=new THREE.Color(color),a=new Float32Array(g.attributes.position.count*3);for(let i=0;i<a.length;i+=3){a[i]=c.r;a[i+1]=c.g;a[i+2]=c.b;}g.setAttribute('color',new THREE.BufferAttribute(a,3));};
+  for(const p of parts)paint(p,0xffffff);
+  if(kind!=="jelly") {
+    const eyeX={angel:0.062,butterfly:0.065,pipefish:0.026,eel:0.047,ribbon:0.027,ray:0.07,grouper:0.14}[kind]||0.068;
+    const eyeZ=kind==="pipefish"?0.35:kind==="ray"?0.19:0.23;
+    for(const side of [-1,1]) {const eye=new THREE.SphereGeometry(kind==="pipefish"?0.012:0.023,8,6);eye.translate(side*eyeX,0.045,eyeZ);paint(eye,0x10191b);parts.push(eye);}
+  }
   const merged = mergeGeometries(parts);
   for (const p of parts) p.dispose();
   return merged;
@@ -445,7 +483,13 @@ function planForSpecies(sp) {
   if (!sp) return base;
 
   const band = zoneIndex(sp.zoneId);
-  if (band < 2) return base;    // the tank shapes still hold in the light
+  if (band < 2) {
+    const variant=(sp.seed>>>0)%5;
+    if(variant===0)return "butterfly";
+    if(variant===1)return "lionfish";
+    if(base==="eel"||variant===2)return "pipefish";
+    return base;
+  } //    // the tank shapes still hold in the light
 
   // Slow, bright and solitary is a jelly wherever you find it.
   if (sp.glow >= 0.55 && sp.speed <= 2.3 && sp.schooling <= 0.42) return "jelly";
@@ -466,6 +510,7 @@ const FISH_VERTEX_COMMON = /* glsl */ `
   attribute vec4 aFish;      // shimmer, glow pulse, swim phase, panic
   varying vec4 vFish;
   varying vec3 vFishBody;
+  varying vec3 vFishPosition;
   uniform float uSwimLateral;
   uniform float uSwimFlap;
   uniform float uSwimPulse;
@@ -489,8 +534,10 @@ const FISH_VERTEX_COMMON = /* glsl */ `
 `;
 
 const FISH_FRAGMENT_COMMON = /* glsl */ `
+  uniform float uPattern;
   varying vec4 vFish;
   varying vec3 vFishBody;
+  varying vec3 vFishPosition;
   uniform vec3 uBackTint;
   uniform vec3 uBellyTint;
   uniform vec3 uRimColour;
@@ -583,6 +630,7 @@ export class FishManager {
     const shimB = new THREE.Color(hslHex((sp.hue + 208) % 360, 92, 57));
 
     const uniforms = {
+      uPattern: { value: (sp.seed >>> 0) % 4 },
       uBackTint: { value: backTint },
       uBellyTint: { value: bellyTint },
       uRimColour: { value: rimColour },
@@ -602,6 +650,7 @@ export class FishManager {
 
     const material = new THREE.MeshStandardMaterial({
       color: 0xffffff,
+      vertexColors: true,
       roughness: 0.44,
       metalness: 0.12,
       emissive: sp.glowHex,
@@ -673,7 +722,8 @@ export class FishManager {
           "#include <begin_vertex>",
           `#include <begin_vertex>
           transformed += fishSwim(transformed, aFish.z);
-          vFish = aFish;`,
+          vFish = aFish;
+          vFishPosition = position;`,
         );
 
       shader.fragmentShader = shader.fragmentShader
@@ -685,7 +735,13 @@ export class FishManager {
              own normal so it stays put when the fish rolls, which is the whole
              point: dark from above, pale from below, gone from both. */
           float fishVentral = 1.0 - smoothstep(-0.55, 0.32, vFishBody.y);
-          diffuseColor.rgb *= mix(uBackTint, uBellyTint, fishVentral);`,
+          diffuseColor.rgb *= mix(uBackTint, uBellyTint, fishVentral);
+          float marking;
+          if (uPattern < 0.5) marking = smoothstep(0.2,0.4,sin(vFishPosition.z*42.0+vFishPosition.y*12.0));
+          else if (uPattern < 1.5) marking = 1.0-smoothstep(0.022,0.045,abs(vFishPosition.y+0.012));
+          else if (uPattern < 2.5) marking = smoothstep(0.4,0.7,sin(vFishPosition.z*65.0)*sin(vFishPosition.y*80.0));
+          else marking = smoothstep(0.08,0.16,abs(vFishPosition.y))*0.8;
+          diffuseColor.rgb *= mix(vec3(1.12),vec3(0.28,0.43,0.48),marking*0.7);`,
         )
         .replace(
           "#include <emissivemap_fragment>",

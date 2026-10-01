@@ -27,6 +27,7 @@ import { ResolutionGovernor, pixelRatioFor } from "./quality.js";
 import { InputDevices } from "./input.js";
 import { splitFrame } from "./frame.js";
 import { AmbientLife } from "./ambient.js";
+import { Workshop } from "./workshop.js";
 import { Base } from "./base.js";
 import { PhotoMode } from "./photo.js";
 import { attachAnalytics } from "./analytics.js";
@@ -114,6 +115,7 @@ export class Game {
     this.input = new InputDevices(this);
     // The inside of the Hull: its own scene, drawn while you are aboard.
     this.base = new Base(this);
+    this.workshop = new Workshop(this);
     this.photo = new PhotoMode(this);
     this._captures = [];
     this.offAnalytics = attachAnalytics(this);
@@ -153,6 +155,13 @@ export class Game {
       if (document.hidden && this.mode === "dive") this.setMode("paused");
     };
     this._onUnload = () => this.persist(true);
+    this._onCabinKey = (e) => {
+      if (e.code !== "KeyV" || e.repeat || /INPUT|TEXTAREA|SELECT/.test(e.target?.tagName || "")) return;
+      e.preventDefault();
+      if (this.base.area === "cabin" && this.mode === "base") this.base.takeHelm();
+      else this.enterCabin();
+    };
+    window.addEventListener("keydown", this._onCabinKey);
 
     window.addEventListener("resize", this._onResize);
     window.addEventListener("orientationchange", this._onResize);
@@ -249,6 +258,7 @@ export class Game {
     this.hud.update(dt);
     this.chart.update(dt);
     this.base.update(dt);
+    this.workshop.update(dt);
 
     this.saveTimer -= dt;
     if (this.dirty && this.saveTimer <= 0) this.persist(true);
@@ -266,7 +276,12 @@ export class Game {
     const aboard = this.base.active;
     const scene = aboard ? this.base.scene : this.scene;
     const camera = aboard ? this.base.camera : this.camera;
-    if (this.post) {
+    // Indoor metal and work lamps use the standard LDR path. HDR bloom +
+    // multisample resolve can produce black patches on some integrated GPUs.
+    if (aboard) {
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(scene, camera);
+    } else if (this.post) {
       try {
         this.post.render(scene, camera, dt);
       } catch (err) {
@@ -307,7 +322,8 @@ export class Game {
 
     // The world keeps breathing while a panel is open — a frozen sea behind
     // the drydock would make the station feel like a different program.
-    this.sub.update(live ? dt : 0);
+    const cabinHold = this.base && this.base.area === "cabin" && !this.sub.docked;
+    this.sub.update(live && !cabinHold ? dt : 0);
     if (this.mode === "dive") {
       this.fish.update(dt);
       this.creatures.update(dt);
@@ -367,6 +383,14 @@ export class Game {
       this.log("clamps on. nothing in the hold, but the repairs are free.", "info");
     }
     this.persist(true);
+  }
+
+  enterCabin() {
+    if (this.sub.destroyed || !["dive", "paused", "base", "station"].includes(this.mode)) return;
+    if (this.photo?.active) this.photo.toggle();
+    this.sub.velocity.set(0, 0, 0);
+    this.setMode("base");
+    this.base.board();
   }
 
   undock() {
@@ -475,6 +499,7 @@ export class Game {
   }
 
   buyUpgrade(id) {
+    if (!this.sub.docked) { this.toast("Return to the Hull to fit components."); return { ok: false, reason: "not docked" }; }
     const res = applyUpgrade(this.profile, id) || { ok: false };
     if (!res.ok) {
       this.toast(res.reason || "not enough credits");
@@ -639,9 +664,10 @@ export class Game {
     window.removeEventListener("orientationchange", this._onResize);
     document.removeEventListener("visibilitychange", this._onVisibility);
     window.removeEventListener("pagehide", this._onUnload);
+    window.removeEventListener("keydown", this._onCabinKey);
 
     if (this.offAnalytics) this.offAnalytics();
-    for (const system of [this.photo, this.base, this.input, this.chart, this.logbook, this.hud, this.audio, this.combat, this.ambient, this.landmarks, this.creatures, this.fish, this.sub, this.plankton, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
+    for (const system of [this.workshop, this.photo, this.base, this.input, this.chart, this.logbook, this.hud, this.audio, this.combat, this.ambient, this.landmarks, this.creatures, this.fish, this.sub, this.plankton, this.vfx, this.world, this.sky, this.water, this.post, this.ecology]) {
       try {
         if (system && system.dispose) system.dispose();
       } catch (err) {

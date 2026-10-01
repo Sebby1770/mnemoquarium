@@ -1606,3 +1606,12 @@ body[data-photo="1"] .touch-stick-zone { visibility: hidden !important; opacity:
     transition-duration: 0.01ms !important;
   }
 }
+
+/* The refit bay is a physical boat preview, not just a price list. */
+#shipyard{display:grid;grid-template-columns:minmax(240px,1fr) minmax(260px,1fr);gap:24px;min-height:430px;padding:8px 0 20px}
+.ship-view{min-width:0;background:radial-gradient(ellipse at center,#1e3b48,#07151e 72%);border:1px solid #34525c;border-radius:12px;align-self:start;position:sticky;top:0;overflow:hidden}
+.ship-view canvas{display:block;width:100%;height:310px;touch-action:none;cursor:grab}.ship-view canvas:active{cursor:grabbing}
+.ship-rotate{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px}.ship-rotate span{font:9px var(--mono);letter-spacing:1px;color:#8cadb8}.ship-rotate button{padding:8px 14px}
+.ship-fitted{padding:0 16px 14px;color:#9dc3c6;font-size:12px;line-height:1.7}.ship-controls h3{margin:0 0 12px}.component-picks{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0}.component-picks button{font-size:11px;padding:7px 9px}.component-picks button[aria-pressed="true"]{border-color:#8cdecb;background:#254e53;color:#e7fff4}.component-picks button[data-fitted="true"]::before{content:'✓ ';color:#8cdecb}.component-detail{border-top:1px solid var(--line);padding:16px 0;min-height:140px}.component-detail p{font-size:13px;color:#9fb6c0;line-height:1.5}.component-detail strong{font:12px var(--mono);color:#b9e8d6}.component-buy,.component-board{display:block;width:100%;margin:8px 0}
+.base-tools{display:flex;justify-content:center;gap:8px;margin-top:10px;pointer-events:auto}.base-tools button{padding:7px 12px;font-size:11px}.base-tools [hidden]{display:none}
+@media(max-width:760px){#shipyard{grid-template-columns:1fr}.ship-view{position:static}.ship-view canvas{height:230px}.component-detail{min-height:0}.component-picks{gap:5px}.component-picks button{font-size:10px}.tabs{flex-wrap:wrap}.base-tools button{font-size:10px;padding:6px 10px}}

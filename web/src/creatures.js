@@ -82,130 +82,59 @@ function limb(segments, length, radius, material) {
  * crescent with a much longer upper lobe, and the mouth is slung underneath a
  * blunt snout rather than sitting on the nose. Gills and a visible eye do the
  * rest. */
-function buildShark(type) {
-  const group = new THREE.Group();
+export function buildShark(type) {
+  const group = new THREE.Group(); group.name = "reef-shark";
   const L = type.length;
-  const material = shellMaterial(type, { roughness: 0.72 });
-  const belly = shellMaterial(type, { color: type.bellyColor, roughness: 0.82, emissiveIntensity: 0 });
-  const dark = shellMaterial(type, { color: 0x0b0d10, roughness: 0.5, emissiveIntensity: 0 });
-
-  /* t runs 0 at the tail to 1 at the snout. Girth is a lopsided bell peaking
-     forward of centre, pinched to a thin peduncle at the tail and rounded off
-     rather than sharpened at the nose. */
-  const profile = (t) => {
-    const bell = Math.exp(-Math.pow((t - 0.63) / 0.40, 2));
-    const peduncle = 0.14 + 0.86 * smoothstep(0, 0.28, t);
-    const snout = 1 - 0.86 * smoothstep(0.8, 1, t);
-    return clamp01(bell * peduncle * snout + 0.05);
+  const material = shellMaterial(type, { color: 0x69898e, roughness: 0.74, emissiveIntensity: 0 });
+  const pale = shellMaterial(type, { color: 0xd3e0d7, roughness: 0.8, emissiveIntensity: 0 });
+  const dark = shellMaterial(type, { color: 0x182e34, roughness: 0.7, emissiveIntensity: 0 });
+  const iris = shellMaterial(type, { color: 0xb9b79b, roughness: 0.4, emissiveIntensity: 0 });
+  const profile = t => (0.10 + 0.9 * smoothstep(0, 0.38, t))
+    * (1 - 0.88 * smoothstep(0.68, 1, t));
+  const body = spindle({ length: L, radius: L * 0.102, rings: 34, segments: 24, profile, flattenX: 0.92 });
+  const colors = [];
+  for (let i = 0; i < body.attributes.position.count; i++) {
+    const y = body.attributes.position.getY(i) / L;
+    const c = new THREE.Color(0x607e85).lerp(new THREE.Color(0xd7e1d9), 1 - smoothstep(-0.025, 0.012, y));
+    colors.push(c.r,c.g,c.b);
+  }
+  body.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+  const skin=material.clone();skin.color.setHex(0xffffff);skin.vertexColors=true;
+  group.add(new THREE.Mesh(body,skin));
+  // Explicit outlines keep dorsals in YZ and paired fins in XZ. The former
+  // rotateZ/rotateY chain tipped the dorsal across the body like a propeller.
+  const fin = (points, mat, parent=group) => {
+    const normal=new THREE.Vector3().subVectors(points[1],points[0]).cross(new THREE.Vector3().subVectors(points[2],points[0])).normalize();
+    const drop=Math.abs(normal.x)>Math.abs(normal.y)?0:1;
+    const contour=points.map(p=>new THREE.Vector2(drop===0?p.y:p.x,p.z));
+    const triangles=THREE.ShapeUtils.triangulateShape(contour,[]);
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(triangles.flatMap(t=>t.flatMap(i=>points[i].toArray())),3));g.computeVertexNormals();
+    const mesh=new THREE.Mesh(g,mat);parent.add(mesh);return mesh;
   };
-
-  const body = spindle({
-    length: L, radius: L * 0.125, rings: 22, segments: 14,
-    profile,
-    flattenX: 0.82,
-  });
-
-  /* Squeeze the back half flat sideways. A shark is round through the
-     shoulders and a blade by the time it reaches the tail, and that taper is
-     most of why it looks like it can turn. */
-  {
-    const pos = body.attributes.position;
-    const half = L / 2;
-    for (let i = 0; i < pos.count; i += 1) {
-      const t = clamp01((pos.getZ(i) + half) / L);
-      const squeeze = lerp(0.52, 1, smoothstep(0.0, 0.55, t));
-      pos.setX(i, pos.getX(i) * squeeze);
-    }
-    body.computeVertexNormals();
+  const yz = pairs => pairs.map(([y,z])=>new THREE.Vector3(0,y*L,z*L));
+  fin(yz([[0.09,0.14],[0.29,0.015],[0.12,-0.025],[0.08,-0.14]]),material).name='dorsal-fin';
+  fin(yz([[0.242,0.045],[0.29,0.015],[0.245,0.004]]),dark);
+  fin(yz([[0.044,-0.26],[0.12,-0.30],[0.038,-0.37]]),material);
+  for(const side of [-1,1]) {
+    fin([[side*0.075,-0.03,0.20],[side*0.34,-0.06,-0.10],[side*0.24,-0.065,-0.17],[side*0.06,-0.055,0.01]].map(p=>new THREE.Vector3(...p).multiplyScalar(L)),material).name='pectoral-fin';
+    fin([[side*0.04,-0.035,-0.17],[side*0.15,-0.055,-0.31],[side*0.03,-0.04,-0.28]].map(p=>new THREE.Vector3(...p).multiplyScalar(L)),material);
   }
-  group.add(new THREE.Mesh(body, material));
-
-  // The pale underside is countershading in the swim shader now; a separate
-  // belly mesh read as a white bulge and made the whole animal look soft.
-
-  // Dorsal: swept back hard, the one everybody can draw.
-  const dorsal = blade({ length: L * 0.3, width: L * 0.19, taper: 0.06, sweep: 0.95 });
-  dorsal.rotateZ(Math.PI / 2);
-  dorsal.rotateY(Math.PI / 2);
-  dorsal.translate(0, L * 0.115, L * 0.02);
-  group.add(new THREE.Mesh(dorsal, material));
-
-  // A second, small dorsal back near the tail. Cheap, and very shark.
-  const dorsal2 = blade({ length: L * 0.1, width: L * 0.07, taper: 0.15, sweep: 0.9 });
-  dorsal2.rotateZ(Math.PI / 2);
-  dorsal2.rotateY(Math.PI / 2);
-  dorsal2.translate(0, L * 0.06, -L * 0.28);
-  group.add(new THREE.Mesh(dorsal2, material));
-
-  // Pectorals: long, held out flat like wings.
-  for (const side of [-1, 1]) {
-    const pec = blade({ length: L * 0.28, width: L * 0.13, taper: 0.14, sweep: 0.85 });
-    pec.rotateX(Math.PI / 2);
-    pec.rotateZ(side * 1.25);
-    pec.translate(side * L * 0.075, -L * 0.035, L * 0.12);
-    group.add(new THREE.Mesh(pec, material));
-  }
-  // Pelvic pair, small, well back.
-  for (const side of [-1, 1]) {
-    const pel = blade({ length: L * 0.1, width: L * 0.06, taper: 0.2, sweep: 0.8 });
-    pel.rotateX(Math.PI / 2);
-    pel.rotateZ(side * 1.1);
-    pel.translate(side * L * 0.045, -L * 0.05, -L * 0.16);
-    group.add(new THREE.Mesh(pel, material));
-  }
-
-  /* The tail is a crescent: the upper lobe is nearly twice the lower and rakes
-     back. It hangs off a pivot so it can sweep without dragging the body. */
-  const tailPivot = new THREE.Group();
-  tailPivot.position.z = -L * 0.46;
-  const upper = blade({ length: L * 0.4, width: L * 0.15, taper: 0.1, sweep: 1.1 });
-  upper.rotateZ(Math.PI / 2);
-  upper.rotateY(Math.PI / 2);
-  upper.rotateX(-0.28);
-  upper.translate(0, L * 0.03, 0);
-  tailPivot.add(new THREE.Mesh(upper, material));
-  const lower = blade({ length: L * 0.21, width: L * 0.11, taper: 0.18, sweep: 0.95 });
-  lower.rotateZ(-Math.PI / 2);
-  lower.rotateY(Math.PI / 2);
-  lower.rotateX(0.2);
-  tailPivot.add(new THREE.Mesh(lower, material));
-  group.add(tailPivot);
-
-  /* Head. A blunt snout, the mouth slung underneath it, five gill slits and an
-     eye that catches the lamps — the four things that make a fish head read as
-     a face at the edge of the light. */
-  const snout = new THREE.Mesh(new THREE.SphereGeometry(L * 0.07, 12, 9), material);
-  snout.scale.set(0.62, 0.52, 1.9);
-  snout.position.set(0, L * 0.008, L * 0.42);
-  group.add(snout);
-
-  const jaw = new THREE.Group();
-  jaw.position.set(0, -L * 0.045, L * 0.40);
-  const mouth = new THREE.Mesh(
-    new THREE.ConeGeometry(L * 0.062, L * 0.12, 9, 1, true),
-    shellMaterial(type, { color: 0x14090c, emissive: 0x4a1620, emissiveIntensity: 0.3 }),
-  );
-  mouth.geometry.rotateX(-Math.PI / 2);
-  mouth.rotation.x = 0.32;
-  jaw.add(mouth);
-  group.add(jaw);
-
-  for (let i = 0; i < 5; i += 1) {
-    for (const side of [-1, 1]) {
-      const slit = new THREE.Mesh(new THREE.BoxGeometry(L * 0.006, L * 0.05, L * 0.012), dark);
-      slit.position.set(side * L * 0.085, -L * 0.01, L * 0.26 - i * L * 0.032);
-      slit.rotation.x = 0.2;
-      group.add(slit);
+  const tailPivot=new THREE.Group();tailPivot.position.z=-L*0.48;group.add(tailPivot);
+  fin(yz([[0.01,0.02],[0.23,-0.18],[0.29,-0.34],[0.12,-0.25],[0,-0.095],[-0.145,-0.20],[-0.09,-0.065]]),material,tailPivot);
+  fin(yz([[0.25,-0.25],[0.29,-0.34],[0.225,-0.305]]),dark,tailPivot);
+  const jaw=new THREE.Group();jaw.position.set(0,-L*0.04,L*0.365);group.add(jaw);
+  // A mouth line on the underside, rather than a separate white jaw blob.
+  const mouth=new THREE.Mesh(new THREE.TorusGeometry(L*0.04,L*0.003,5,20,Math.PI),dark);mouth.rotation.x=Math.PI/2;mouth.rotation.z=Math.PI;mouth.position.set(0,-L*0.013,L*0.018);jaw.add(mouth);
+  for (const side of [-1,1]) {
+    const eye=new THREE.Mesh(new THREE.SphereGeometry(L*0.012,12,8),iris);eye.position.set(side*L*0.048,L*0.018,L*0.365);group.add(eye);
+    const pupil=new THREE.Mesh(new THREE.SphereGeometry(L*0.008,10,8),dark);pupil.position.copy(eye.position);pupil.position.x+=side*L*0.007;group.add(pupil);
+    for(let i=0;i<5;i++) {
+      const slit=new THREE.Mesh(new THREE.BoxGeometry(L*0.0025,L*(0.047-i*0.003),L*0.007),dark);
+      const z = L*(0.23-i*0.022);
+      slit.position.set(side*(L*0.102*profile(z/L+0.5)*0.92+L*0.001),-L*0.004,z);slit.rotation.x=-0.22;group.add(slit);
     }
   }
-
-  for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(L * 0.018, 8, 6), dark);
-    eye.position.set(side * L * 0.072, L * 0.022, L * 0.375);
-    group.add(eye);
-  }
-
-  return { group, parts: { tail: tailPivot, jaw }, materials: [material, belly, dark] };
+  return {group,parts:{tail:tailPivot,jaw},materials:[material,pale,dark,iris,skin]};
 }
 
 function buildSquid(type) {

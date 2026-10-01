@@ -158,3 +158,21 @@ test("a windup is placed on the side it comes from", () => {
   assert.doesNotThrow(() => audio.sfx("windup", { at: vec(8, 0, -4), time: 0.45 }));
   assert.doesNotThrow(() => audio.sfx("notice", { at: vec(-40, 0, -40) }));
 });
+
+test("volume survives ducking and zero remains silent on restart", () => {
+  const {audio}=rig({profile:{settings:{sound:true,volume:0.2}}});
+  const initial=audio.master.gain.value;
+  audio.duck(0.5,0.1);
+  assert.ok(Math.abs(audio.master.gain.value-initial*0.5)<1e-9);
+  audio.setVolume(0);audio.start();
+  assert.equal(audio.master.gain.value,0);
+  audio.setVolume(0.2);audio.duck(1,0.1);
+  assert.ok(Math.abs(audio.master.gain.value-initial)<1e-9);
+});
+
+test("the cabin does not play random hull groans", () => {
+  const {audio}=rig({mode:'base',stats:{pressureRating:140}});
+  audio.depthSmooth=500;audio.depthTarget=500;audio.groanIn=0;
+  let groans=0;audio.groan=()=>{groans++;};
+  audio.update(0.1);assert.equal(groans,0);
+});

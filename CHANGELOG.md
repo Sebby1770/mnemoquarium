@@ -2,6 +2,16 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.10.0] - 2026-10-01 — A boat to live in
+
+- Walk inside the submarine: helm, engineering console, battery bank, specimen storage, and an access hatch. Enter with V, d-pad right, or the pause menu. The boat holds position while you explore; the hatch only opens when docked.
+- A Shipyard tab with a rotatable 3D preview, component locations, installation prices, and visible fitted parts. Upgrades appear both outside and in the cabin. Installation requires docking.
+- Dock and cabin rendering bypass the HDR bloom/MSAA path to address black rendering artifacts; indoor work lights are less harsh.
+- Removed the bright sun flare, reflected sun glitter, and screen-space glare.
+- Sound is off by default unless explicitly enabled; added a saved volume slider and softened the continuous drone.
+- Rebuilt reef shark fins and tail in their correct planes, with countershading, black tips, eyes and gills.
+- Added butterflyfish, lionfish and pipefish body plans, seeded markings, and modeled eyes while retaining instanced shoals.
+
 ## [1.9.0] - 2026-09-30 — A home above the water
 
 - A dedicated website: an illustrated homepage, phrase generator, daily sea,
