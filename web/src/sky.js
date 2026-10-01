@@ -120,7 +120,8 @@ vec3 skyColour(vec3 dir, bool clouds) {
     col = mix(uHorizon, uSeaFar, clamp(-h * 5.0, 0.0, 1.0));
   }
   float s = max(dot(d, uSunDir), 0.0);
-  col += uSunColour * (pow(s, 1600.0) * 22.0 + pow(s, 90.0) * 0.4 + pow(s, 7.0) * 0.1);
+  // A soft sky disc, without an HDR sun flare or halo.
+  col = mix(col, uSunColour * 0.8, smoothstep(0.9994, 0.9999, s));
   return col;
 }
 `;
@@ -286,7 +287,7 @@ export class SkyAndSea {
             vec3 body = mix(uSeaDeep, uSeaDeep * 1.9 + vec3(0.0, 0.05, 0.05), crest * 0.5);
             col = mix(body, sky, fres);
             vec3 H = normalize(uSunDir + V);
-            col += uSunColour * (pow(max(dot(N, H), 0.0), 520.0) * 7.0 + pow(max(dot(N, H), 0.0), 60.0) * 0.12);
+            // Keep the reflected sky, without blinding specular sun glitter.
             // The far sea melts into the horizon rather than ending in an edge.
             float haze = smoothstep(180.0, 1150.0, dist);
             col = mix(col, uHorizon, haze);

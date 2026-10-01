@@ -14,7 +14,7 @@ function worker({ failInstall = false } = {}) {
   vm.runInNewContext(read("sw.js"), {
     URL, Response, Request: class { constructor(url) { this.url = url; } },
     fetch: async () => { throw new Error("offline"); },
-    caches: { open: async () => cache, keys: async () => ["another-app", "mnemoquarium-deep-old", "mnemoquarium-deep-v1.9.0"],
+    caches: { open: async () => cache, keys: async () => ["another-app", "mnemoquarium-deep-old", read("sw.js").match(/const CACHE = "([^"]+)"/)[1]],
       delete: async (key) => deleted.push(key) },
     self: { location: { origin: "https://example.com" }, clients: { claim: async () => {} },
       skipWaiting: () => { skipped = true; }, addEventListener: (name, fn) => { handlers[name] = fn; } },

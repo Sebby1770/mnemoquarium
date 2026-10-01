@@ -463,9 +463,12 @@ test("only the most recent seas are kept", async () => {
   delete globalThis.localStorage;
 });
 
-test("sound is on unless the player turned it off", () => {
-  assert.equal(save.newProfile(PHRASE, 1).settings.sound, true);
-  assert.equal(save.migrate({ phrase: PHRASE, settings: { sound: false } }).settings.sound, true, "an old default is not a choice");
+test("sound starts quiet and preserves explicit choices", () => {
+  assert.equal(save.newProfile(PHRASE, 1).settings.sound, false);
+  assert.equal(save.migrate({ phrase: PHRASE, settings: { sound: true, soundSet: true } }).settings.sound, true);
+  assert.equal(save.migrate({ phrase: PHRASE, settings: { volume: 99 } }).settings.volume, 1);
+  assert.equal(save.migrate({ phrase: PHRASE, settings: { volume: -1 } }).settings.volume, 0);
+  assert.equal(save.migrate({ phrase: PHRASE, settings: { sound: false } }).settings.sound, false, "an old default is not a choice");
   assert.equal(save.migrate({ phrase: PHRASE, settings: { sound: false, soundSet: true } }).settings.sound, false, "a choice is kept");
 });
 

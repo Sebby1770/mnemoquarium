@@ -186,6 +186,8 @@ export class InputDevices {
       return;
     }
 
+    if (mode === "dive" && down.includes(B.right)) { this.releasePad(sub); game.enterCabin(); return; }
+
     if (mode !== "dive") {
       if (this.padFiring) this.releasePad(sub);
       if (mode === "chart" && (down.includes(B.b) || down.includes(B.back) || down.includes(B.start))) {

@@ -166,6 +166,7 @@ export class Audio {
        Everything that makes noise checks `running`. */
     const settings = game && game.profile ? game.profile.settings : null;
     this.enabled = !!(settings && settings.sound);
+    this.volume = clamp01(num(settings && settings.volume, 0.35));
     this.running = false;
     this.ctx = null;
 
@@ -213,7 +214,7 @@ export class Audio {
     const g = this.master.gain;
     g.cancelScheduledValues(now);
     g.setValueAtTime(Math.max(0.0001, g.value), now);
-    g.linearRampToValueAtTime(MASTER_GAIN * this.duckLevel, now + 0.9);
+    g.linearRampToValueAtTime(MASTER_GAIN * this.volume * this.duckLevel, now + 0.9);
     // Re-anchor the bed so a long silence does not snap back in at full tilt.
     this.applyDepth(true);
     this.applyThrust(true);
@@ -243,6 +244,11 @@ export class Audio {
       const p = this.ctx.suspend();
       if (p && typeof p.catch === "function") p.catch(() => {});
     }, 430);
+  }
+
+  setVolume(value) {
+    this.volume = clamp01(num(value, 0.35));
+    if (this.ctx) this.duck(this.duckLevel, 0.12);
   }
 
   toggle(enabled) {
@@ -372,7 +378,7 @@ export class Audio {
       const t = clamp01(this.depthSmooth / SEA.maxDepth);
       // The hull complains more often the further down you push it.
       this.groanIn = lerp(34, 8.5, t) * (0.55 + Math.random() * 0.95);
-      if (this.depthSmooth > 30) this.groan(this.ctx.currentTime + 0.08, t);
+      if (this.game.mode === "dive" && this.depthSmooth > this.game.stats.pressureRating * 0.9) this.groan(this.ctx.currentTime + 0.08, t);
     }
 
     this.updateBeacon(step);
@@ -811,7 +817,7 @@ export class Audio {
     this.drive(this.droneB.frequency, f * 1.0073, 1.8, force);
     this.drive(this.droneSub.frequency, f * 0.5, 1.8, force);
     this.drive(this.droneLP.frequency, lerp(340, 145, t), 1.4, force);
-    this.drive(this.droneGain.gain, lerp(0.045, 0.21, Math.pow(t, 0.85)), 1.4, force);
+    this.drive(this.droneGain.gain, lerp(0.012, 0.055, Math.pow(t, 0.85)), 1.4, force);
   }
 
   applyThrust(force) {
@@ -846,7 +852,7 @@ export class Audio {
     if (!this.ctx || !this.master) return;
     this.duckLevel = clamp01(level);
     const now = this.ctx.currentTime;
-    const target = this.running ? MASTER_GAIN * this.duckLevel : 0;
+    const target = this.running ? MASTER_GAIN * this.volume * this.duckLevel : 0;
     this.master.gain.cancelScheduledValues(now);
     this.master.gain.setValueAtTime(Math.max(0.0001, this.master.gain.value), now);
     this.master.gain.setTargetAtTime(target, now, Math.max(0.02, seconds || 0.12));
