@@ -20,6 +20,8 @@ export function mergeGeometries(geometries) {
   let total = 0;
   for (const { flat } of parts) total += flat.attributes.position.count;
 
+  const hasColor = parts.some(({flat}) => !!flat.attributes.color);
+  const color = hasColor ? new Float32Array(total * 3).fill(1) : null;
   const position = new Float32Array(total * 3);
   const normal = new Float32Array(total * 3);
   const uv = new Float32Array(total * 2);
@@ -32,6 +34,7 @@ export function mergeGeometries(geometries) {
     position.set(p.array.subarray(0, p.count * 3), cursor * 3);
     if (n) normal.set(n.array.subarray(0, n.count * 3), cursor * 3);
     if (t) uv.set(t.array.subarray(0, t.count * 2), cursor * 2);
+    if (color && flat.attributes.color) color.set(flat.attributes.color.array, cursor * 3);
     cursor += p.count;
     // Only dispose the copies we made; the caller still owns its originals.
     if (owned) flat.dispose();
@@ -41,6 +44,7 @@ export function mergeGeometries(geometries) {
   out.setAttribute("position", new THREE.BufferAttribute(position, 3));
   out.setAttribute("normal", new THREE.BufferAttribute(normal, 3));
   out.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  if (color) out.setAttribute("color", new THREE.BufferAttribute(color, 3));
   out.computeBoundingSphere();
   return out;
 }

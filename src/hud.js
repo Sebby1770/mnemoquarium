@@ -280,7 +280,12 @@ export class HUD {
     this.pauseStats = pick("pause-stats");
     this.resumeBtn = pick("btn-resume");
     this.abandonBtn = pick("btn-abandon");
+    const cabinButton = pick("btn-cabin");
+    this.openCabin = () => this.game.enterCabin();
+    cabinButton.addEventListener("click", this.openCabin);
+    this.timers.push(() => cabinButton.removeEventListener("click", this.openCabin));
     this.toggleSound = pick("toggle-sound");
+    this.rangeVolume = pick("range-volume");
     this.toggleInvert = pick("toggle-invert");
     this.rangeSens = pick("range-sens");
     this.deadHeadline = pick("dead-headline");
@@ -290,6 +295,7 @@ export class HUD {
     this.loadingBar = pick("loading-bar");
 
     this.tabBodies = {
+      shipyard: pick("station-shipyard"),
       market: pick("station-market"),
       drydock: pick("station-drydock"),
       log: pick("station-log"),
@@ -494,11 +500,13 @@ export class HUD {
     this.toggleSound.addEventListener("change", settings);
     this.toggleInvert.addEventListener("change", settings);
     this.rangeSens.addEventListener("input", settings);
+    this.rangeVolume.addEventListener("input", settings);
     this.timers.push(() => {
       this.selectQuality.removeEventListener("change", settings);
       this.toggleSound.removeEventListener("change", settings);
       this.toggleInvert.removeEventListener("change", settings);
       this.rangeSens.removeEventListener("input", settings);
+      this.rangeVolume.removeEventListener("input", settings);
     });
 
     this.syncSettings();
@@ -1319,6 +1327,7 @@ export class HUD {
 
   selectTab(name) {
     const tab = this.tabBodies[name] ? name : "market";
+    if (tab === "shipyard" && this.game.workshop) this.game.workshop.refresh();
     this.activeTab = tab;
     for (const btn of this.stationTabs.querySelectorAll("button[data-tab]")) {
       btn.classList.toggle("active", btn.dataset.tab === tab);
@@ -1730,6 +1739,7 @@ export class HUD {
   syncSettings() {
     const settings = (this.game.profile && this.game.profile.settings) || {};
     this.toggleSound.checked = !!settings.sound;
+    this.rangeVolume.value = String(Math.round((settings.volume ?? 0.35) * 100));
     this.toggleInvert.checked = !!settings.invertY;
     this.rangeSens.value = String(Math.round((Number(settings.sensitivity) || 1) * 100));
     if (this.selectQuality) this.selectQuality.value = settings.quality || "auto";
@@ -1741,6 +1751,8 @@ export class HUD {
     if (!profile.settings) profile.settings = {};
     const settings = profile.settings;
     settings.sound = !!this.toggleSound.checked;
+    settings.volume = clamp(Number(this.rangeVolume.value) / 100, 0, 1);
+    if (this.game.audio) this.game.audio.setVolume(settings.volume);
     settings.invertY = !!this.toggleInvert.checked;
     settings.sensitivity = clamp(Number(this.rangeSens.value) / 100, 0.2, 3);
     settings.quality = this.selectQuality ? this.selectQuality.value : "auto";

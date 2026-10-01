@@ -13,11 +13,9 @@
 import * as THREE from "three";
 
 import { zoneForDepth } from "./config.js";
-import { damp, smoothstep } from "./util.js";
-import { WATER_SUN } from "./water.js";
+import { damp } from "./util.js";
 import { GRADE, GRADE_GLSL } from "./grade.js";
 
-const _camPos = new THREE.Vector3();
 
 const LEVELS = 5;
 
@@ -362,22 +360,9 @@ export class PostFX {
     this.lastInk = ink;
     u.uInk.value = game.mode === "dive" || game.mode === "paused" ? ink : 0;
 
-    /* Where the sun is on screen, and how much ray the water can carry. Shafts
-       come from the light above; looking at the floor there is little to ray. */
-    let rays = 0;
-    const cam = game.camera;
-    if (cam && !air && game.mode !== "base" && game.mode !== "station") {
-      const p = this.sunProbe.copy(WATER_SUN).multiplyScalar(500).add(cam.getWorldPosition(_camPos));
-      p.project(cam);
-      const inFront = p.z < 1;
-      if (inFront) {
-        u.uSunUv.value.set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5);
-        const off = Math.max(Math.abs(p.x), Math.abs(p.y));
-        rays = (1 - smoothstep(1.0, 2.6, off)) * (1 - smoothstep(20, 160, depth)) * 0.85;
-      }
-    }
-    this.rays = damp(this.rays || 0, rays, 3, dt);
-    u.uRays.value = this.rays;
+    // Sun glare is deliberately disabled, including screen-space shafts.
+    this.rays = 0;
+    u.uRays.value = 0;
   }
 
   render(scene, camera, dt = 0) {
