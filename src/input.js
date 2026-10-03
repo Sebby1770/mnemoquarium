@@ -172,6 +172,11 @@ export class InputDevices {
 
     const game = this.game;
     const mode = game.mode;
+    if (game.base?.cabin.guide?.open) {
+      if (down.includes(B.b) || down.includes(B.back)) game.base.cabin.guide.close();
+      else if (axes[1]) game.base.cabin.guide.scrollTop += axes[1] * 400 * dt;
+      return;
+    }
 
     // On foot: the same sticks walk and look, and A (or X) uses what you face.
     if (mode === "base" && game.base) {
