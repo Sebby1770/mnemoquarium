@@ -20,6 +20,7 @@
 import * as THREE from "three";
 
 import { Cabin } from "./cabin.js";
+import { DockDetail } from "./dock-detail.js";
 import { SUB } from "./config.js";
 import { clamp, damp, formatCredits } from "./util.js";
 import { spindle } from "./geo.js";
@@ -213,9 +214,11 @@ export class Base {
     this.fitted = "";
 
     this._build();
+    this.detail = new DockDetail(this);
     this._buildEnvironment();
     this.area = "dock";
     this.cabin = new Cabin(game);
+    this.cabin.scene.environment = this.envTarget?.texture || null;
     this._buildHud();
     this._bind();
   }
@@ -617,7 +620,7 @@ export class Base {
         <span class="label">the hull · tender station</span>
         <strong class="base-credits"></strong>
         <p class="base-goal"></p>
-        <div class="base-tools"><button type="button" class="base-board">Board submarine</button><button type="button" class="base-helm" hidden>Take the helm</button><button type="button" class="base-exit" hidden>Disembark</button></div>
+        <div class="base-tools"><button type="button" class="base-research">Field guide</button><button type="button" class="base-board">Board submarine</button><button type="button" class="base-helm" hidden>Take the helm</button><button type="button" class="base-exit" hidden>Disembark</button></div>
       </div>
       <div class="base-dot"></div>
       <button type="button" class="base-prompt" hidden></button>
@@ -627,6 +630,7 @@ export class Base {
       </div>`;
     document.body.appendChild(root);
     this.hud = root;
+    root.querySelector(".base-research").onclick = () => this.cabin.openGuide();
     this.boardBtn = root.querySelector(".base-board");
     this.helmBtn = root.querySelector(".base-helm");
     this.exitBtn = root.querySelector(".base-exit");
@@ -753,7 +757,7 @@ export class Base {
 
   interact() {
     const game = this.game;
-    if (game.mode !== "base" || !this.focus) return;
+    if (game.mode !== "base" || !this.focus || this.cabin.guide?.open) return;
     const id = this.focus.id;
     if (this.area === "cabin") {
       if (id === "helm") this.takeHelm();
@@ -762,11 +766,14 @@ export class Base {
         if (game.sub.docked) { game.setMode("station"); game.hud.selectTab("shipyard"); }
         else game.toast(`Engineering · hull ${Math.round(game.sub.hull)} / ${game.stats.hullMax} · casing ${game.stats.pressureRating} m · refits at the Hull`);
       }
+      else if (id === "research") this.cabin.openGuide();
+      else if (id === "lighting") this.cabin.toggleLights();
       else if (id === "power") game.toast(`Cell array · ${Math.round(game.sub.battery)} / ${game.stats.batteryMax} · mark ${game.profile.upgrades.battery}`);
       else if (id === "cargo") game.toast(`Specimen storage · ${game.profile.cargo.length} / ${game.stats.cargoSlots} occupied`);
       return;
     }
     if (game.audio) game.audio.sfx("click");
+    if (id === "research") { this.cabin.openGuide(); return; }
     if (id === "hatch") {
       // The pointer lock, if any, is kept: the boat wants it next.
       game.enterCabin();
@@ -787,11 +794,11 @@ export class Base {
     if (this.area === "cabin") return;
     this.dockState = { scene: this.scene, boxes: this.boxes, items: this.items, pos: this.pos, yaw: this.yaw, pitch: this.pitch };
     this.area = "cabin"; this.scene = this.cabin.scene; this.boxes = this.cabin.boxes; this.items = this.cabin.items;
-    this.pos = { x: 0, z: 2.6 }; this.yaw = 0; this.pitch = 0; this.focus = null;
+    this.pos = { x: 0, z: 4.6 }; this.yaw = 0; this.pitch = 0; this.focus = null;
     this.keys = Object.create(null); this.lookDX = 0; this.lookDY = 0;
     this.cabin.refresh(); this.boardBtn.hidden = true; this.helmBtn.hidden = false; this.exitBtn.hidden = !this.game.sub.docked;
     this.hud.querySelector(".label").textContent = "your submarine · pressure hull";
-    this.hudFitted.textContent = "Helm forward · engineering port · battery bank starboard · hatch aft";
+    this.hudFitted.textContent = "Bridge forward · research & engineering amidships · crew bay & airlock aft";
     this.backBtn.textContent = "Return to cabin";
     this._placeCamera();
   }
@@ -856,6 +863,7 @@ export class Base {
   }
 
   _walk(dt) {
+    if (this.cabin.guide?.open) { this.lookDX = 0; this.lookDY = 0; return; }
     const settings = (this.game.profile && this.game.profile.settings) || {};
     const sens = LOOK_SENS * (settings.sensitivity || 1);
     this.yaw -= this.lookDX * sens;
@@ -1005,6 +1013,7 @@ export class Base {
 
   dispose() {
     this.restoreDock();
+    this.detail.dispose();
     this.cabin.dispose();
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);

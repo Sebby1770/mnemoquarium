@@ -2,6 +2,15 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.11.0] - 2026-10-03 — The research vessel
+
+- Rebuilt the walkable submarine as three connected bays: panoramic bridge, research and engineering, and aft crew quarters. Added detailed pressure bulkheads, brass portholes, live instruments, passive wildlife hydrophone, specimen canisters, modular cells, a berth and a wheel-lock airlock.
+- Switch between working lights and a quiet night watch at the aft lighting panel. The boat continues to hold position while you explore.
+- The Hull now has a fitted service bench, spare thruster trolley, oxygen stores, pipework, gantry braces, lit walking routes and a furnished observatory. Static fittings are batched by material.
+- Added peaceful humpback pairs, orca pods, giant squid with ink-and-jet escapes, rare glass serpents and cathedral rays. Each has a distinct model, animation, habitat and first-sighting reward.
+- A marine field guide is available aboard and in the observatory, with habitats and saved discovery status. Sightings are also listed in the manifest; terrain blocks observation rewards through the seabed.
+- Large wildlife placement checks body clearance and nearby terrain. Mythical sightings have limited populations and slower respawn attempts.
+
 ## [1.10.0] - 2026-10-01 — A boat to live in
 
 - Walk inside the submarine: helm, engineering console, battery bank, specimen storage, and an access hatch. Enter with V, d-pad right, or the pause menu. The boat holds position while you explore; the hatch only opens when docked.

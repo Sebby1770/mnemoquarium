@@ -14,6 +14,7 @@
 
 import * as THREE from "three";
 
+import { GIANTS, GIANT_MOTION } from "./giants.js";
 import { SEA } from "./config.js";
 import { clamp, clamp01, damp, lerp } from "./util.js";
 import { mergeGeometries, spindle, tube } from "./geo.js";
@@ -215,6 +216,7 @@ function turtleGeometry() {
 
 /* The motion, per kind, in the animal's own frame before instancing. */
 const MOTION = {
+  ...GIANT_MOTION,
   octopus: /* glsl */ `
     float w = aW * aW;
     float ph = uTime * 1.9 + aPhase + aArm * 1.7;
@@ -276,6 +278,7 @@ function animatedMaterial(kind, opts, uniforms) {
 /* depth: where it will be found. floor: lives on the bottom. size: metres of
    whatever the geometry's one unit is. pay: the sighting fee. */
 export const AMBIENT_KINDS = {
+  ...GIANTS,
   octopus: {
     name: "Reef Octopus", count: 6, depth: [8, 520], floor: true,
     size: [1.1, 2.4], speed: 0.45, pay: 45,
@@ -323,8 +326,11 @@ export function placeFor(kind, floorDepth, subDepth, roll) {
     if (floorDepth < lo || floorDepth > hi) return null;
     return floorDepth;
   }
-  const top = Math.max(lo, 2);
-  const bottom = Math.min(hi, floorDepth - 3);
+  const clearance = spec.clearance ? spec.clearance * spec.size[1] : 3;
+  // Giants need the entire body below the surface and above the seafloor.
+  if (spec.clearance && (subDepth < lo - 45 || subDepth > hi + 45)) return null;
+  const top = Math.max(lo, clearance + 1);
+  const bottom = Math.min(hi, floorDepth - clearance);
   if (bottom <= top) return null;
   // Near the boat's own depth, so you meet them rather than hear about them.
   const want = clamp(subDepth + (roll - 0.5) * 50, top, bottom);
@@ -366,6 +372,8 @@ export class AmbientLife {
       for (let i = 0; i < spec.count; i += 1) {
         animals.push({
           alive: false,
+          retryAt: 0,
+          slot: i,
           position: new THREE.Vector3(),
           heading: Math.random() * Math.PI * 2,
           pitch: 0,
@@ -396,12 +404,34 @@ export class AmbientLife {
       const z = sub.position.z + Math.sin(a) * r;
       if (x * x + z * z > SEA.worldRadius * SEA.worldRadius) continue;
       const floor = -world.heightAt(x, z);
-      const depth = placeFor(kind.id, floor, sub.depth, Math.random());
+      const clearance = kind.spec.clearance ? kind.spec.size[1] * kind.spec.clearance : 0;
+      // Sample around a large animal as well as under its centre. A whale must
+      // not be placed with its head or flukes inside a neighbouring reef.
+      let safeFloor = floor;
+      if (clearance) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        safeFloor = Math.min(safeFloor, -world.heightAt(x + dx * kind.spec.size[1] * .6, z + dz * kind.spec.size[1] * .6));
+      }
+      const depth = placeFor(kind.id, safeFloor, sub.depth, Math.random());
       if (depth == null) continue;
       animal.position.set(x, -depth, z);
       animal.alive = true;
       animal.heading = Math.random() * Math.PI * 2;
-      animal.scale = lerp(kind.spec.size[0], kind.spec.size[1], Math.random());
+      if (kind.spec.pod && animal.slot > 0) {
+        const leader = kind.animals[0];
+        if (leader.alive) {
+          const side = animal.slot % 2 ? 1 : -1;
+          const gap = kind.spec.size[1] * .7;
+          const px = leader.position.x + Math.cos(leader.heading) * side * gap - Math.sin(leader.heading) * gap;
+          const pz = leader.position.z - Math.sin(leader.heading) * side * gap - Math.cos(leader.heading) * gap;
+          const memberDepth = placeFor(kind.id, -world.heightAt(px, pz), -leader.position.y, .5);
+          if (memberDepth != null && Math.hypot(px, pz) < SEA.worldRadius) {
+            animal.position.set(px, -memberDepth, pz); animal.heading = leader.heading;
+          }
+        }
+      }
+      animal.scale = kind.spec.pod
+        ? lerp(kind.spec.size[0], kind.spec.size[1], animal.slot === 0 ? 1 : .15)
+        : lerp(kind.spec.size[0], kind.spec.size[1], Math.random());
       animal.flee = 0;
       return true;
     }
@@ -428,10 +458,17 @@ export class AmbientLife {
       }
       let n = 0;
       for (const animal of kind.animals) {
-        if (!animal.alive || animal.position.distanceTo(sub.position) > RESPAWN_RANGE) {
+        if (animal.alive && animal.position.distanceTo(sub.position) > RESPAWN_RANGE) {
+          animal.alive = false; animal.retryAt = this.time + (kind.spec.rare ? 25 : 2);
+        }
+        if (!animal.alive) {
+          if (this.time < animal.retryAt) continue;
+          animal.retryAt = this.time + (kind.spec.rare ? 12 : 3);
+          if (kind.spec.rare && Math.random() > .32) continue;
           if (!this._place(kind, animal)) continue;
         }
         this._steer(kind, animal, dt, sub);
+        if (!animal.alive) continue;
         this._sight(kind, animal, sub);
         this._write(kind, animal, n);
         n += 1;
@@ -450,7 +487,7 @@ export class AmbientLife {
     a.retarget -= dt;
     if (a.retarget <= 0) {
       a.retarget = 3 + Math.random() * 6;
-      a.turn = (Math.random() - 0.5) * 0.6;
+      a.turn = (Math.random() - 0.5) * (spec.clearance ? .10 : .6);
     }
     a.heading += a.turn * dt;
 
@@ -481,6 +518,32 @@ export class AmbientLife {
     }
 
     let speed = spec.speed;
+    if (spec.motion === "whale") {
+      a.position.y += Math.sin(this.time * .12 + a.bob) * .3 * dt;
+      const leader = kind.animals[0];
+      if (a.slot > 0 && leader.alive) {
+        const side = a.slot % 2 ? 1 : -1, gap = spec.size[1] * .7;
+        const tx = leader.position.x + Math.cos(leader.heading) * side * gap - Math.sin(leader.heading) * gap;
+        const tz = leader.position.z - Math.sin(leader.heading) * side * gap - Math.cos(leader.heading) * gap;
+        const desired = Math.atan2(tx - a.position.x, tz - a.position.z);
+        const delta = Math.atan2(Math.sin(desired - a.heading), Math.cos(desired - a.heading));
+        a.heading += delta * Math.min(1, dt * .35);
+        speed *= clamp(Math.hypot(tx - a.position.x, tz - a.position.z) / gap, .7, 1.3);
+      }
+      if (dist < a.scale * .65 + 6) {
+        const away = Math.atan2(a.position.x - sub.position.x, a.position.z - sub.position.z);
+        a.heading += Math.atan2(Math.sin(away - a.heading), Math.cos(away - a.heading)) * Math.min(1, dt * .3);
+      }
+    } else if (spec.motion === "jet") {
+      a.flee = Math.max(0, a.flee - dt);
+      if (dist < 20 && a.flee === 0) {
+        a.flee = 7; a.heading = Math.atan2(a.position.x - sub.position.x, a.position.z - sub.position.z);
+        this.game.vfx?.inkCloud(a.position, 5);
+      }
+      speed *= 1 + Math.pow(Math.max(0, Math.sin(this.time * 1.4 + a.bob)), 4) * (a.flee > 0 ? 4 : 1.8);
+    } else if (spec.motion === "serpent" || spec.motion === "ray") {
+      a.position.y += Math.sin(this.time * .16 + a.bob) * .4 * dt;
+    }
     if (kind.id === "jelly") {
       // Mostly drift; the pulse lifts it a little each beat.
       const beat = Math.max(0, Math.sin(this.time * 1.6 + a.bob));
@@ -498,8 +561,15 @@ export class AmbientLife {
 
     const floor = world.heightAt(a.position.x, a.position.z);
     const [lo, hi] = spec.depth;
-    const minY = Math.max(floor + 2 + a.scale, -hi);
-    const maxY = Math.min(-lo, -1.5);
+    const clearance = spec.clearance ? spec.clearance * a.scale : 2 + a.scale;
+    let safeFloor = floor;
+    if (spec.clearance) {
+      const ahead = world.heightAt(a.position.x + Math.sin(a.heading) * a.scale * .7, a.position.z + Math.cos(a.heading) * a.scale * .7);
+      safeFloor = Math.max(safeFloor, ahead);
+    }
+    const minY = Math.max(safeFloor + clearance, -hi);
+    const maxY = Math.min(-lo, spec.clearance ? -clearance - 1 : -1.5);
+    if (minY > maxY) { a.alive = false; a.retryAt = this.time + 4; return; }
     if (a.position.y < minY) { a.position.y = damp(a.position.y, minY, 2, dt); a.turn = 0.4; }
     if (a.position.y > maxY) a.position.y = damp(a.position.y, maxY, 2, dt);
     a.pitch = kind.id === "ray" ? Math.sin(this.time * 0.3 + a.bob) * 0.12 : 0;
@@ -513,9 +583,15 @@ export class AmbientLife {
     if (stats.sighted.includes(kind.id)) return;
     _to.copy(a.position).sub(sub.position);
     const d = _to.length();
-    if (d > SIGHT_RANGE + a.scale || d < 0.01) return;
+    if (d > (kind.spec.clearance ? 45 : SIGHT_RANGE) + a.scale || d < 0.01) return;
+    // Looking toward an animal through a ridge does not count as seeing it.
+    if (this.game.world) for (let t = .15; t < 1; t += .15) {
+      const x = sub.position.x + _to.x * t, z = sub.position.z + _to.z * t;
+      if (this.game.world.heightAt(x, z) > sub.position.y + _to.y * t + 1) return;
+    }
     if (_to.divideScalar(d).dot(_fwd) < SIGHT_CONE) return;
     stats.sighted.push(kind.id);
+    this.game.toast?.(`First sighting · ${kind.spec.name} · +${kind.spec.pay} cr`);
     const game = this.game;
     game.log(kind.spec.line, "lore");
     game.addCredits(kind.spec.pay, "sighting");

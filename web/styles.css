@@ -1615,3 +1615,19 @@ body[data-photo="1"] .touch-stick-zone { visibility: hidden !important; opacity:
 .ship-fitted{padding:0 16px 14px;color:#9dc3c6;font-size:12px;line-height:1.7}.ship-controls h3{margin:0 0 12px}.component-picks{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0}.component-picks button{font-size:11px;padding:7px 9px}.component-picks button[aria-pressed="true"]{border-color:#8cdecb;background:#254e53;color:#e7fff4}.component-picks button[data-fitted="true"]::before{content:'✓ ';color:#8cdecb}.component-detail{border-top:1px solid var(--line);padding:16px 0;min-height:140px}.component-detail p{font-size:13px;color:#9fb6c0;line-height:1.5}.component-detail strong{font:12px var(--mono);color:#b9e8d6}.component-buy,.component-board{display:block;width:100%;margin:8px 0}
 .base-tools{display:flex;justify-content:center;gap:8px;margin-top:10px;pointer-events:auto}.base-tools button{padding:7px 12px;font-size:11px}.base-tools [hidden]{display:none}
 @media(max-width:760px){#shipyard{grid-template-columns:1fr}.ship-view{position:static}.ship-view canvas{height:230px}.component-detail{min-height:0}.component-picks{gap:5px}.component-picks button{font-size:10px}.tabs{flex-wrap:wrap}.base-tools button{font-size:10px;padding:6px 10px}}
+
+/* Field notes are readable while aboard, including in a narrow viewport. */
+.marine-guide { width: min(860px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); box-sizing: border-box; padding: clamp(20px, 4vw, 36px); color: var(--text); background: #0a1e29; border: 1px solid #3a686d; border-radius: 16px; }
+.marine-guide::backdrop { background: rgba(2, 10, 17, .78); backdrop-filter: blur(5px); }
+.marine-guide h2 { margin: 0 0 12px; font-size: 1.8rem; }
+.marine-guide > p { color: #a6c3c6; line-height: 1.6; max-width: 65ch; }
+.marine-guide-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 24px 0; }
+.marine-guide article { padding: 18px; border: 1px solid #284751; border-radius: 10px; background: #102834; }
+.marine-guide article[data-seen="1"] { border-color: #58ad94; }
+.marine-guide article strong { display: block; font-size: 1rem; color: #d5efe7; }
+.marine-guide article span { display: block; color: #d5b880; margin-top: 8px; font: .72rem var(--mono); }
+.marine-guide article p { font-size: .85rem; line-height: 1.6; color: #9cb9c2; margin-bottom: 0; }
+.marine-guide > button { position: sticky; bottom: 0; padding: 12px 20px; background: #20444f; color: #dff7ef; border: 1px solid #579c9d; border-radius: 8px; cursor: pointer; }
+.base-plate { max-width: calc(100vw - 32px); box-sizing: border-box; }
+.base-tools { flex-wrap: wrap; justify-content: center; }
+@media (max-width: 580px) { .marine-guide-list { grid-template-columns: 1fr; } .base-goal { font-size: .68rem; } .base-prompt { max-width: 92vw; white-space: normal; } }

@@ -32,6 +32,7 @@ import {
   describeStats,
 } from "./progression.js";
 import { bearingOf, compassPoint, formatRange } from "./nav.js";
+import { AMBIENT_KINDS } from "./ambient.js";
 import { STAMPS, STAMP_LABELS, codexProgress, deepMark, recommendedRefit, stampsFor } from "./goals.js";
 
 /* Scratch, hoisted so the per-frame loops never allocate. */
@@ -1539,6 +1540,17 @@ export class HUD {
       tail.appendChild(elem("span", "money", `${formatCredits(entry.baseValue)} base`));
 
       row.append(glyph, main, tail);
+      list.appendChild(row);
+    }
+    list.appendChild(elem("h3", "codex-head", `marine sightings · ${(record.sighted || []).length} of ${Object.keys(AMBIENT_KINDS).length}`));
+    for (const [id, spec] of Object.entries(AMBIENT_KINDS)) {
+      const logged = (record.sighted || []).includes(id);
+      const row = elem("div", "row species-row");
+      const main = elem("div", "row-main");
+      main.appendChild(elem("strong", null, `${logged ? "✓ " : ""}${spec.name}`));
+      main.appendChild(elem("span", "row-sub", `${spec.depth[0]}–${spec.depth[1]} m · ${logged ? "sighting logged" : "look for this animal"}`));
+      main.appendChild(elem("span", "row-sub", spec.hint || spec.line));
+      row.append(main, elem("span", "money", logged ? "recorded" : `${spec.pay} cr`));
       list.appendChild(row);
     }
     this.stationSpecies.replaceChildren(list);
