@@ -427,8 +427,9 @@ export class Base {
     this._buildTank();
 
     /* Terminals. */
-    this._terminal("market", "MARKET", "sell the hold", -10.2, -8.6, Math.PI * 0.25);
-    this._terminal("drydock", "DRYDOCK", "refit the boat", 9.3, -1.6, -Math.PI / 2 + 0.35);
+    this._terminal("market", "EXCHANGE", "sell the hold", -10.2, -8.6, Math.PI * 0.25);
+    this._terminal("drydock", "SHIPYARD", "refit the boat", 9.3, -1.6, -Math.PI / 2 + 0.35);
+    this._terminal("armoury", "ARMOURY", "torpedoes · resupply", -9.8, 5.8, Math.PI * .65);
     this._terminal("log", "MANIFEST", "the record", 4.6, -18.9, 0.2);
     // The hatch: stand in the railing gap and look at the boat.
     this.items.push({ id: "hatch", label: "Board submarine · walk inside", x: 0.6, z: -2.4, reach: 2.4 });
@@ -763,7 +764,7 @@ export class Base {
       if (id === "helm") this.takeHelm();
       else if (id === "exit-cabin") this.disembark();
       else if (id === "engineering") {
-        if (game.sub.docked) { game.setMode("station"); game.hud.selectTab("shipyard"); }
+        if (game.sub.docked) { game.hud.openService("shipyard"); }
         else game.toast(`Engineering · hull ${Math.round(game.sub.hull)} / ${game.stats.hullMax} · casing ${game.stats.pressureRating} m · refits at the Hull`);
       }
       else if (id === "research") this.cabin.openGuide();
@@ -786,8 +787,7 @@ export class Base {
       return;
     }
     // A terminal: open the station panel on its tab, with the room behind it.
-    game.setMode("station");
-    if (game.hud) game.hud.selectTab(id === "drydock" ? "shipyard" : id);
+    game.hud.openService(id === "drydock" ? "shipyard" : id);
   }
 
   board() {

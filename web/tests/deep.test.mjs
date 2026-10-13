@@ -526,3 +526,17 @@ test("the boat is pushed out of the station, not through it", () => {
   assert.deepEqual(inside.slice(0, 3), [1, 0, 0], "from inside, out the nearest face");
   assert.ok(Math.abs(inside[3] - 0.6) < 1e-9);
 });
+
+test("ammunition purchases enforce unlock, capacity, integer quantities and exact credit costs", () => {
+  const p = {credits:1000,upgrades:{},ammo:{torpedo:0}};
+  assert.equal(progression.buyTorpedoes(p,1).ok,false);
+  p.upgrades.torpedo=1;
+  for(const n of [-1,0,1.5,NaN,Infinity,4]) assert.equal(progression.buyTorpedoes(p,n).ok,false);
+  assert.equal(p.credits,1000); assert.equal(p.ammo.torpedo,0);
+  assert.deepEqual(progression.buyTorpedoes(p,2),{ok:true,quantity:2,cost:150});
+  assert.equal(p.credits,850); assert.equal(p.ammo.torpedo,2);
+  assert.equal(progression.buyTorpedoes(p,2).ok,false);
+  p.credits=74; assert.equal(progression.buyTorpedoes(p,1).ok,false);
+  p.credits=75; assert.equal(progression.buyTorpedoes(p,1).ok,true);
+  assert.equal(p.credits,0); assert.equal(p.ammo.torpedo,3);
+});

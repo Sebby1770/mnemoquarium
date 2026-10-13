@@ -127,8 +127,8 @@ export const POST = {
   bloomRadius: 1.1,
   bloomScale: 0.5,          // render bloom at half resolution
   vignette: 0.42,
-  grain: 0.035,
-  aberration: 0.0016,       // grows with depth and with damage
+  grain: 0.012,
+  aberration: 0.0005,       // grows with depth and with damage
   exposure: 1.02,
   maxPixelRatio: 2,
 };

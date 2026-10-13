@@ -45,8 +45,8 @@ export function buildSubModel(upgrades) {
   };
 
   const hullLevel = lv(upgrades, "hull");
-  const paint = mat({ color: 0xb87a1c, roughness: 0.66, metalness: 0.2 });
-  const steel = mat({ color: 0x59636b, roughness: 0.45, metalness: 0.75 });
+  const paint = mat({ color: 0xd4a342, roughness: 0.34, metalness: 0.35 });
+  const steel = mat({ color: 0x789098, roughness: 0.3, metalness: 0.5 });
   const darkSteel = mat({ color: 0x22292f, roughness: 0.5, metalness: 0.7 });
   const glass = mat({ color: 0x9fe8ff, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.45, emissive: 0x1d6f86, emissiveIntensity: 0.6 });
   const lamp = mat({ color: 0xffffff, emissive: 0xfff1cc, emissiveIntensity: 1.4 });
@@ -59,15 +59,22 @@ export function buildSubModel(upgrades) {
     const body = Math.pow(Math.sin(Math.PI * Math.min(1, t * 0.92 + 0.04)), 0.55);
     return Math.max(0.12, body * (0.35 + 0.65 * Math.min(1, t * 3)));
   };
-  const hull = new THREE.Mesh(spindle({ length: LENGTH, radius: RADIUS, profile, rings: 28, segments: 24 }), paint);
+  const hull = new THREE.Mesh(spindle({ length: LENGTH, radius: RADIUS, profile, rings: 48, segments: 48 }), paint);
   group.add(hull);
 
-  // A dark waterline stripe, so the shape reads from any side.
-  const stripe = new THREE.Mesh(new THREE.CylinderGeometry(RADIUS * 1.005, RADIUS * 1.005, LENGTH * 0.62, 24, 1, true), darkSteel);
-  stripe.rotation.x = Math.PI / 2;
-  stripe.scale.set(1, 1, 0.14);
-  stripe.position.y = -RADIUS * 0.45;
-  group.add(stripe);
+  // Flush keel fairing and swept hydroplanes follow the pressure hull.
+  const fairing = (x, y, z, sx, sy, sz, material = paint) => {
+    const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), material);
+    mesh.position.set(x, y, z); mesh.scale.set(sx, sy, sz); group.add(mesh); return mesh;
+  };
+  fairing(0, -.77, -.15, .66, .43, 3.6, darkSteel);
+  const finShape = new THREE.Shape();
+  finShape.moveTo(0, 0); finShape.lineTo(1.65, -.75); finShape.quadraticCurveTo(1.85, -1, 1.5, -1.05); finShape.lineTo(0, -.9); finShape.closePath();
+  for (const side of [-1, 1]) {
+    const fin = new THREE.Mesh(new THREE.ExtrudeGeometry(finShape, {depth: .065, bevelEnabled: true, bevelSize: .035, bevelThickness: .025, bevelSegments: 2, steps: 1}), paint);
+    fin.rotation.x = Math.PI / 2; fin.scale.x = side; fin.position.set(side * .4, -.1, -2.8); group.add(fin);
+    fairing(side * .92, .03, 1.6, .3, .23, 1.9, darkSteel);
+  }
 
   // Bow viewport, and the wipers if the scrubbers are fitted.
   const dome = new THREE.Mesh(new THREE.SphereGeometry(RADIUS * 0.72, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.5), glass);
@@ -82,29 +89,25 @@ export function buildSubModel(upgrades) {
     group.add(wiper);
   }
 
-  // The sail, with its own little window.
-  const sail = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.3, 2.4), paint);
-  sail.position.set(0, RADIUS + 0.45, LENGTH * 0.06);
-  group.add(sail);
-  const sailCap = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 2.4, 14, 1, false, 0, Math.PI), paint);
-  sailCap.rotation.x = Math.PI / 2;
-  sailCap.rotation.y = Math.PI / 2;
-  sailCap.position.set(0, RADIUS + 1.1, LENGTH * 0.06);
-  group.add(sailCap);
-  const sailWin = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.3, 0.05), glass);
-  sailWin.position.set(0, RADIUS + 0.75, LENGTH * 0.06 + 1.21);
-  group.add(sailWin);
+  // A streamlined sail blends into a low saddle instead of a rectangular box.
+  fairing(0, 1.18, .45, .62, .45, 1.8, paint);
+  fairing(0, 1.6, .45, .4, .86, 1.18, paint);
+  fairing(0, 1.86, 1.21, .31, .22, .46, glass);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(.065, .09, .7, 16), steel);
+  mast.position.set(0, 2.53, -.12); group.add(mast);
+  fairing(0, 2.86, -.03, .1, .085, .2, darkSteel);
   const hatch = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.08, 16), steel);
   hatch.position.set(0, RADIUS + 1.58, LENGTH * 0.06 - 0.4);
   group.add(hatch);
 
-  // Armour: plates in pairs along the flanks.
-  for (let i = 0; i < hullLevel * 2; i += 1) {
-    const side = i % 2 === 0 ? -1 : 1;
-    const k = Math.floor(i / 2);
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.08, RADIUS * 0.9, 1.1), steel);
-    plate.position.set(side * RADIUS * 0.98, 0.05, LENGTH * 0.18 - k * 1.3);
-    group.add(plate);
+  // Conformal armour petals wrap the hull; no flat plates protrude into the flow.
+  for (let i = 0; i < hullLevel; i += 1) {
+    const z = 1.8 - i * 1.02;
+    const radius = RADIUS * profile(.5 + z / LENGTH) + .025;
+    for (const side of [-1, 1]) {
+      const plate = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, .91, 24, 1, true, side > 0 ? .72 : Math.PI + .72, 1.65), steel);
+      plate.rotation.x = Math.PI / 2; plate.position.z = z; group.add(plate);
+    }
   }
 
   // Pressure frames: rings round the hull.
@@ -129,7 +132,8 @@ export function buildSubModel(upgrades) {
   const blades = 3 + thrust;
   const bladeLen = 0.55 + thrust * 0.1;
   for (let i = 0; i < blades; i += 1) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.16, bladeLen, 0.03), steel);
+    const blade = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), steel);
+    blade.scale.set(.14, bladeLen * .65, .035);
     blade.position.y = bladeLen / 2;
     const arm = new THREE.Group();
     arm.rotation.z = (i / blades) * Math.PI * 2;
@@ -153,27 +157,17 @@ export function buildSubModel(upgrades) {
     }
   }
 
-  // Cargo pods slung under the hull.
+  // Enlarging saddle tanks form one continuous fairing on each flank.
   const cargo = lv(upgrades, "cargo");
-  const pods = Math.ceil(cargo / 2);
-  for (let i = 0; i < pods; i += 1) {
-    for (const side of [-1, 1]) {
-      const pod = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 1.3, 6, 12), paint);
-      pod.rotation.x = Math.PI / 2;
-      pod.position.set(side * (RADIUS * 0.72), -RADIUS * 0.82, LENGTH * 0.12 - i * 1.9);
-      group.add(pod);
-    }
+  if (cargo) for (const side of [-1, 1]) {
+    fairing(side * .83, -.67, -.35, .32 + cargo * .035, .32, 1.6 + cargo * .18, paint);
+    fairing(side * 1.02, -.71, -.35, .045, .1, 1.25 + cargo * .15, steel);
   }
-
-  // Cell racks on the deck, lit green.
+  // Sealed battery fins recess into the shoulders, with narrow charge indicators.
   const battery = lv(upgrades, "battery");
-  for (let i = 0; i < battery; i += 1) {
-    const rack = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.22, 0.5), darkSteel);
-    rack.position.set(0, RADIUS * 0.97, -LENGTH * 0.12 - i * 0.62);
-    group.add(rack);
-    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.04, 0.12), cellGlow);
-    strip.position.set(0, RADIUS * 0.97 + 0.12, -LENGTH * 0.12 - i * 0.62);
-    group.add(strip);
+  for (const side of [-1, 1]) if (battery) {
+    fairing(side * .62, .72, -.85, .32, .3, 1.2 + battery * .2, darkSteel);
+    for (let i = 0; i < battery; i++) fairing(side * .72, .95, -.15 - i * .48, .085, .025, .15, cellGlow);
   }
 
   // Lamps on the bow: two stock, two more per mark.
@@ -221,9 +215,12 @@ export function buildSubModel(upgrades) {
   for (let i = 0; i < tubes; i += 1) {
     const side = i % 2 === 0 ? -1 : 1;
     const row = Math.floor(i / 2);
-    const door = new THREE.Mesh(new THREE.CircleGeometry(0.16, 14), darkSteel);
-    door.position.set(side * RADIUS * 0.72, -0.1 - row * 0.38, LENGTH * 0.38);
-    door.rotation.y = side * 0.9;
+    fairing(side * 1.02, -.1 - row * .38, 2.1, .25, .25, 1.15, steel);
+    const bezel = new THREE.Mesh(new THREE.TorusGeometry(.18, .025, 8, 24), steel);
+    bezel.position.set(side * 1.02, -.1 - row * .38, 3.13); group.add(bezel);
+    const door = new THREE.Mesh(new THREE.CircleGeometry(0.16, 24), darkSteel);
+    door.position.set(side * 1.02, -0.1 - row * .38, 3.14);
+    door.rotation.y = 0;
     group.add(door);
   }
 
@@ -277,12 +274,12 @@ export function buildSubModel(upgrades) {
    for tests: which parts buildSubModel will draw for these levels. */
 export function fittedParts(upgrades) {
   const parts = [];
-  if (lv(upgrades, "hull") > 0) parts.push(`${lv(upgrades, "hull") * 2} armour plates`);
+  if (lv(upgrades, "hull") > 0) parts.push(`${lv(upgrades, "hull") * 2} curved armour petals`);
   parts.push(`${2 + lv(upgrades, "pressure") * 2} frame rings`);
   parts.push(`${3 + lv(upgrades, "thrust")}-blade screw${lv(upgrades, "thrust") >= 1 ? " in a duct" : ""}`);
   if (lv(upgrades, "thrust") >= 3) parts.push("side thruster pods");
   if (lv(upgrades, "cargo") > 0) parts.push(`${Math.ceil(lv(upgrades, "cargo") / 2) * 2} cargo pods`);
-  if (lv(upgrades, "battery") > 0) parts.push(`${lv(upgrades, "battery")} cell racks`);
+  if (lv(upgrades, "battery") > 0) parts.push(`${lv(upgrades, "battery")} sealed cell banks`);
   parts.push(`${2 + lv(upgrades, "lights") * 2} lamps`);
   if (lv(upgrades, "torpedo") > 0) parts.push(`${lv(upgrades, "torpedo") < 3 ? 2 : 4} torpedo tubes`);
   if (lv(upgrades, "net") > 0) parts.push("net drum");

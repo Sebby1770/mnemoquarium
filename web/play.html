@@ -164,11 +164,11 @@
         <header class="station-head">
           <div>
             <p class="eyebrow">the hull · tender station</p>
-            <h2>Docked</h2>
+            <h2 id="service-title">Docked</h2><p id="service-description" class="hint"></p>
           </div>
           <div class="station-credits"><span class="label">credits</span><strong id="station-credits">0</strong></div>
         </header>
-        <nav class="tabs" id="station-tabs">
+        <nav class="tabs" id="station-tabs" hidden>
           <button type="button" data-tab="market" class="active">Market</button>
           <button type="button" data-tab="shipyard">Shipyard</button>
           <button type="button" data-tab="drydock">Quick refits</button>
@@ -184,6 +184,9 @@
         <div class="tab-body" id="station-shipyard" data-tab="shipyard" hidden><div id="shipyard"></div></div>
         <div class="tab-body" id="station-drydock" data-tab="drydock" hidden>
           <div id="shop-list" class="stack"></div>
+        </div>
+        <div class="tab-body" id="station-armoury" hidden>
+          <div class="ordnance-card"><div class="torpedo-illustration" aria-hidden="true"><i></i><b></b></div><div><p class="eyebrow">ORDNANCE / 01</p><h3>Deepwater torpedo</h3><p class="hint">An armed explosive with a 9 m blast radius. Install launch tubes at the Shipyard, then refill your magazine here.</p><div class="ordnance-specs"><span><strong>90</strong> direct damage</span><span><strong>75 cr</strong> per torpedo</span></div><p id="ammo-status" role="status"></p><div class="ammo-slots" aria-hidden="true"></div><div class="ammo-actions"><button id="ammo-one" type="button" class="primary">Buy one · 75 cr</button><button id="ammo-fill" type="button">Fill magazine</button></div><p class="tiny">Harpoons and nets use rechargeable cells. Repairs and power are free at the dock.</p></div></div>
         </div>
         <div class="tab-body" id="station-log" data-tab="log" hidden>
           <div id="station-stats" class="stats"></div>

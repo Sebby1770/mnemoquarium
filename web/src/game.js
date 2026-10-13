@@ -8,7 +8,7 @@ import { ECONOMY, SEA, SUB, ZONES, zoneForDepth, zoneIndex } from "./config.js";
 import { clamp, clamp01, formatCredits, formatDepth, makeRng } from "./util.js";
 import { fnv } from "./mnemo.js";
 import { loadProfile, newProfile, saveProfile } from "./save.js";
-import { applyUpgrade, computeStats } from "./progression.js";
+import { applyUpgrade, computeStats, buyTorpedoes } from "./progression.js";
 import { Ecology } from "./ecology.js";
 import { SeaWorld } from "./world.js";
 import { VFX } from "./vfx.js";
@@ -422,6 +422,7 @@ export class Game {
   }
 
   sellAll() {
+    if (!this.sub.docked || this.mode !== "station" || this.stationService !== "market") return 0;
     const cargo = this.profile.cargo || [];
     if (!cargo.length) {
       this.toast("the hold is empty");
@@ -452,6 +453,7 @@ export class Game {
   }
 
   sellItem(id) {
+    if (!this.sub.docked || this.mode !== "station" || this.stationService !== "market") return 0;
     const cargo = this.profile.cargo || [];
     const at = cargo.findIndex((it) => it && it.id === id);
     if (at < 0) return 0;
@@ -476,8 +478,8 @@ export class Game {
 
   _teachDrydock() {
     // A toast, not a log line: the log is hidden while you are docked.
-    if (this.teach("drydock", "the drydock is the other tab. pressure casing first — everything worth money is below your rating.", "info")) {
-      this.toast("pressure casing first — the drydock has it");
+    if (this.teach("drydock", "Visit the Shipyard on the opposite side of the pool. Pressure casing opens deeper water.", "info")) {
+      this.toast("Pressure casing first — visit the Shipyard across the pool");
     }
   }
 
@@ -499,7 +501,7 @@ export class Game {
   }
 
   buyUpgrade(id) {
-    if (!this.sub.docked) { this.toast("Return to the Hull to fit components."); return { ok: false, reason: "not docked" }; }
+    if (!this.sub.docked || this.mode !== "station" || this.stationService !== "shipyard") { this.toast("Visit the Shipyard terminal to fit components."); return { ok: false, reason: "Visit the Shipyard terminal to fit components." }; }
     const res = applyUpgrade(this.profile, id) || { ok: false };
     if (!res.ok) {
       this.toast(res.reason || "not enough credits");
@@ -519,6 +521,17 @@ export class Game {
     this.persist(true);
     if (this.hud) this.hud.refreshStation();
     return res;
+  }
+
+  buyAmmo(quantity) {
+    if (!this.sub.docked || this.mode !== "station" || this.stationService !== "armoury") return { ok: false, reason: "Visit the Armoury terminal." };
+    const result = buyTorpedoes(this.profile, quantity);
+    if (!result.ok) { this.toast(result.reason); return result; }
+    this.bus.emit("profile:changed", {});
+    this.persist(true);
+    this.hud.refreshStation();
+    this.toast(`${result.quantity} torpedo${result.quantity === 1 ? "" : "es"} loaded · ${result.cost} cr`);
+    return result;
   }
 
   recomputeStats() {
