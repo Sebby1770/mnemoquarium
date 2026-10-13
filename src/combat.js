@@ -56,7 +56,6 @@ const SPARKLE_INTERVAL = 0.07;
 
 const DENY_INTERVAL = 0.5;          // do not machine-gun the refusal noise
 const TERRAIN_STEP = 2.0;           // seabed sampling stride along a step
-const FISH_PIERCE_TIME = 0.12;      // ignore fish briefly after punching one
 
 /* The net, in feel numbers. The balance numbers are elsewhere on purpose:
    WEAPONS.net owns speed, life, cooldown and cost, and progression owns how
@@ -167,7 +166,6 @@ export class Combat {
     this._beamAmount = 0;
     this._beamEnd = new THREE.Vector3();
     this._pulseFlash = 0;
-    this._taughtBolts = false;
 
     this._buildMaterials();
     this._buildProjectiles();
@@ -802,7 +800,7 @@ export class Combat {
 
     if (!creatures) return true;
     let struck = 0;
-    for (const c of creatures.all) {
+    for (const c of [...creatures.all, ...(game.ambient?.all || []), ...(game.fish?.all || [])]) {
       if (!c || !c.alive) continue;
       _delta.subVectors(c.position, origin);
       const dist = _delta.length();
@@ -816,6 +814,7 @@ export class Combat {
       const slack = Math.min(0.45, radius / Math.max(1, dist) * 0.8);
       if (cosHit < cos - slack) continue;
 
+      if (this._terrainDistance(origin, _delta.clone().normalize(), Math.max(0, dist - radius)) >= 0) continue;
       const fall = clamp01(1 - dist / (spec.range * 1.2));
       const amount = spec.damage * (0.55 + 0.45 * fall);
       _point.copy(c.position).addScaledVector(_delta.normalize(), -radius * 0.7);
@@ -938,14 +937,17 @@ export class Combat {
     let stopDist = Infinity;
     let stopCreature = null;
 
-    if (game.creatures) {
-      const hit = game.creatures.raycast(_prev, p.dir, stepLen);
-      if (hit && hit.creature && hit.creature.alive && hit.distance <= stepLen) {
-        stopDist = hit.distance;
-        stopCreature = hit.creature;
-        if (hit.point) _point.copy(hit.point);
-        else _point.copy(_prev).addScaledVector(p.dir, hit.distance);
+    for (const manager of [game.creatures, game.ambient]) {
+      const hit = manager?.raycast(_prev, p.dir, stepLen);
+      if (hit?.creature?.alive && hit.distance < stopDist) {
+        stopDist = hit.distance; stopCreature = hit.creature;
+        _point.copy(hit.point || _prev.clone().addScaledVector(p.dir, hit.distance));
       }
+    }
+    const fishHit = game.fish?.raycast(_prev, p.dir, Math.min(stepLen, stopDist));
+    if (fishHit?.fish && fishHit.distance < stopDist) {
+      stopDist = fishHit.distance; stopCreature = fishHit.fish;
+      _point.copy(fishHit.point || fishHit.fish.position);
     }
 
     const floor = this._terrainDistance(_prev, p.dir, Math.min(stepLen, stopDist));
@@ -955,32 +957,6 @@ export class Combat {
       stopCreature = null;
       stopTerrain = true;
       _point.copy(_prev).addScaledVector(p.dir, floor);
-    }
-
-    /* Bolts pass through fish — a shoal is not cover, and a bolt stopped by a
-       tetra would make the harpoon useless in the only water worth fishing. */
-    if (p.kind === "harpoon" && p.pierce <= 0 && game.fish) {
-      const fishHit = game.fish.raycast(_prev, p.dir, Math.min(stepLen, stopDist));
-      if (fishHit && fishHit.fish) {
-        _probe.copy(fishHit.point || fishHit.fish.position);
-        p.pierce = FISH_PIERCE_TIME;
-        game.fish.scatter(_probe, 9, 12);
-        if (game.vfx) {
-          game.vfx.hitSpark(_probe, fishHit.fish.species ? fishHit.fish.species.colorHex : 0xffffff);
-        }
-        game.bus.emit("combat:hit", {
-          kind: "fish",
-          amount: 0,
-          point: _probe.clone(),
-          weapon: p.kind,
-        });
-        if (!this._taughtBolts && game.log) {
-          this._taughtBolts = true;
-          const line = "bolts do not fill the hold. the beam does.";
-          if (game.teach) game.teach("bolts", line, "info");
-          else game.log(line, "info");
-        }
-      }
     }
 
     if (stopDist === Infinity) return true;
@@ -1052,9 +1028,10 @@ export class Combat {
 
   _damageCreature(creature, amount, weaponId, point) {
     const game = this.game;
-    if (!creature || !creature.alive || !game.creatures) return false;
+    if (!creature || !creature.alive) return false;
     const spot = point.clone();   // handed to other modules; never a scratch
-    const killed = game.creatures.damage(creature, amount, {
+    const manager = creature.wildlife ? game.ambient : game.creatures;
+    const killed = creature.species ? (game.fish.kill(creature), true) : manager.damage(creature, amount, {
       source: weaponId,
       point: spot,
       weapon: weaponId,
@@ -1062,12 +1039,12 @@ export class Combat {
     if (game.vfx) {
       const colour = weaponId === "pulse" ? WEAPONS.pulse.color : WEAPONS.harpoon.color;
       game.vfx.hitSpark(spot, colour);
-      if (killed && creature.type) game.vfx.bloodCloud(spot, creature.type.bellyColor);
+      if (killed && creature.type && !creature.wildlife) game.vfx.bloodCloud(spot, creature.type.bellyColor);
     }
     if (killed) this._sfx("kill");
     else if (weaponId !== "pulse") this._sfx("hit");
     game.bus.emit("combat:hit", {
-      kind: "creature",
+      kind: creature.wildlife ? "wildlife" : creature.species ? "fish" : "creature",
       amount,
       point: spot,
       weapon: weaponId,
@@ -1091,13 +1068,18 @@ export class Combat {
     if (game.fish) game.fish.scatter(_end, spec.splash * 2.4, 30);
 
     if (game.creatures) {
-      const caught = game.creatures.sphereHit(_end, spec.splash);
+      const caught = [...game.creatures.sphereHit(_end, spec.splash), ...(game.ambient?.sphereHit(_end, spec.splash) || []), ...(game.fish?.all || []).filter(f => f.alive && f.position.distanceTo(_end) < spec.splash)];
+      if (directCreature && !caught.includes(directCreature)) caught.push(directCreature);
       if (caught) {
         for (const c of caught) {
           if (!c || !c.alive) continue;
           const dist = c.position.distanceTo(_end) - (c.radius || 0);
           const fall = clamp01(1 - Math.max(0, dist) / spec.splash);
           const direct = c === directCreature;
+          if (!direct) {
+            const delta = c.position.clone().sub(_end), distance = delta.length();
+            if (this._terrainDistance(_end, delta.normalize(), distance) >= 0) continue;
+          }
           const amount = direct
             ? spec.damage + spec.splashDamage * 0.5
             : spec.splashDamage * (0.3 + 0.7 * fall);
@@ -1105,11 +1087,7 @@ export class Combat {
           this._damageCreature(c, amount, "torpedo", _probe);
         }
       }
-      if (directCreature && directCreature.alive && !(game.creatures.sphereHit(_end, spec.splash) || []).includes(directCreature)) {
-        /* Belt and braces: a body whose centre sits outside the splash ball
-           still ate the warhead nose-first. */
-        this._damageCreature(directCreature, spec.damage, "torpedo", _end);
-      }
+
     }
 
     if (game.sub && game.vfx) {

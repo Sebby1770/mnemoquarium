@@ -372,6 +372,7 @@ export class AmbientLife {
       for (let i = 0; i < spec.count; i += 1) {
         animals.push({
           alive: false,
+          wildlife: true, kindId: id, type: { name: spec.name || id }, hp: 0, hpMax: 0, dying: 0, hurt: 0,
           retryAt: 0,
           slot: i,
           position: new THREE.Vector3(),
@@ -433,6 +434,9 @@ export class AmbientLife {
         ? lerp(kind.spec.size[0], kind.spec.size[1], animal.slot === 0 ? 1 : .15)
         : lerp(kind.spec.size[0], kind.spec.size[1], Math.random());
       animal.flee = 0;
+      animal.hpMax = Math.round(18 + animal.scale * (kind.spec.rare ? 22 : 12));
+      animal.hp = animal.hpMax; animal.dying = 0; animal.hurt = 0; animal.stun = 0;
+      animal.radius = animal.scale * .25;
       return true;
     }
     animal.alive = false;
@@ -458,6 +462,13 @@ export class AmbientLife {
       }
       let n = 0;
       for (const animal of kind.animals) {
+        if (animal.dying > 0) {
+          animal.dying = Math.max(0, animal.dying - dt);
+          animal.position.y = Math.max(game.world.heightAt(animal.position.x, animal.position.z) + .2, animal.position.y - dt * .6);
+          if (animal.dying > 0) this._write(kind, animal, n++);
+          continue;
+        }
+        animal.hurt = Math.max(0, animal.hurt - dt);
         if (animal.alive && animal.position.distanceTo(sub.position) > RESPAWN_RANGE) {
           animal.alive = false; animal.retryAt = this.time + (kind.spec.rare ? 25 : 2);
         }
@@ -482,6 +493,7 @@ export class AmbientLife {
   _steer(kind, a, dt, sub) {
     const world = this.game.world;
     const spec = kind.spec;
+    if (a.stun > 0) { a.stun = Math.max(0, a.stun - dt); return; }
     const dist = a.position.distanceTo(sub.position);
 
     a.retarget -= dt;
@@ -518,6 +530,10 @@ export class AmbientLife {
     }
 
     let speed = spec.speed;
+    if (a.hurt > 0) {
+      a.heading = Math.atan2(a.position.x - sub.position.x, a.position.z - sub.position.z);
+      speed *= 2.8;
+    }
     if (spec.motion === "whale") {
       a.position.y += Math.sin(this.time * .12 + a.bob) * .3 * dt;
       const leader = kind.animals[0];
@@ -601,13 +617,53 @@ export class AmbientLife {
   }
 
   _write(kind, a, i) {
-    _euler.set(a.pitch, a.heading, 0);
+    _euler.set(a.pitch, a.heading, a.dying > 0 ? (1 - a.dying / 4) * 1.5 : 0);
     _q.setFromEuler(_euler);
-    _s.setScalar(a.scale);
+    _s.setScalar(a.scale * (a.dying > 0 ? Math.min(1, a.dying) : 1));
     _p.copy(a.position);
     _m.compose(_p, _q, _s);
     kind.mesh.setMatrixAt(i, _m);
     kind.mesh.setColorAt(i, a.colour);
+  }
+
+  get all() { return this.kinds.flatMap(k => k.animals); }
+
+  raycast(origin, dir, range) {
+    let best = null;
+    const inverse = new THREE.Matrix4(), transform = new THREE.Matrix4();
+    const ray = new THREE.Ray(), point = new THREE.Vector3();
+    const q = new THREE.Quaternion(), scale = new THREE.Vector3();
+    for (const kind of this.kinds) {
+      const geometry = kind.mesh.geometry;
+      if (!geometry.boundingBox) geometry.computeBoundingBox();
+      for (const a of kind.animals) {
+        if (!a.alive) continue;
+        q.setFromEuler(new THREE.Euler(a.pitch, a.heading, 0));
+        transform.compose(a.position, q, scale.setScalar(a.scale));
+        inverse.copy(transform).invert();
+        ray.set(origin, dir).applyMatrix4(inverse);
+        if (!ray.intersectBox(geometry.boundingBox, point)) continue;
+        point.applyMatrix4(transform);
+        const distance = point.distanceTo(origin);
+        if (distance <= range && (!best || distance < best.distance))
+          best = { creature: a, distance, point: point.clone() };
+      }
+    }
+    return best;
+  }
+
+  sphereHit(point, radius) {
+    return this.all.filter(a => a.alive && a.position.distanceTo(point) <= radius + a.radius);
+  }
+
+  damage(a, amount) {
+    if (!a?.alive || !Number.isFinite(amount) || amount <= 0) return false;
+    a.hp = Math.max(0, a.hp - amount); a.hurt = 8; a.flee = 8;
+    if (a.kindId === "giantsquid" || a.kindId === "octopus") this.game.vfx?.inkCloud(a.position, a.scale * .4);
+    if (a.hp > 0) return false;
+    a.alive = false; a.dying = 4; a.retryAt = this.time + 90;
+    this.game.bus.emit("ambient:killed", { animal: a });
+    return true;
   }
 
   /* How many of each are in the water right now — for the chart and tests. */
