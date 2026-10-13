@@ -408,3 +408,18 @@ export function describeStats(stats) {
 
   return rows;
 }
+
+// Ordnance is a purchase, never a side effect of docking or recharging.
+export const TORPEDO_PRICE = 75;
+export function buyTorpedoes(profile, quantity) {
+  const capacity = computeStats(profile.upgrades).torpedoAmmo;
+  const current = Math.max(0, Math.floor(profile.ammo?.torpedo || 0));
+  if (!Number.isInteger(quantity) || quantity <= 0) return { ok: false, reason: "Choose a valid quantity." };
+  if (!capacity) return { ok: false, reason: "Install launch tubes at the Shipyard first." };
+  if (quantity > capacity - current) return { ok: false, reason: "Not enough space in the magazine." };
+  const cost = quantity * TORPEDO_PRICE;
+  if (profile.credits < cost) return { ok: false, reason: "Not enough credits." };
+  profile.credits -= cost;
+  profile.ammo = { ...profile.ammo, torpedo: current + quantity };
+  return { ok: true, quantity, cost };
+}

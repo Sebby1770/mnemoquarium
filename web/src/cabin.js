@@ -205,7 +205,7 @@ export class Cabin {
       this.guide.setAttribute("aria-label", "Marine field guide");
       this.guide.addEventListener("keydown", (event) => event.stopPropagation());
       const title = document.createElement("h2"); title.textContent = "The living deep";
-      const intro = document.createElement("p"); intro.textContent = "Observe wildlife from the helm to log a sighting. These animals are peaceful; each first sighting earns a research fee.";
+      const intro = document.createElement("p"); intro.textContent = "Observe wildlife from the helm to log a sighting. Each first sighting earns a research fee. Weapons can injure wildlife; threatened animals flee.";
       this.guideList = document.createElement("div"); this.guideList.className = "marine-guide-list";
       const close = document.createElement("button"); close.textContent = "Return to the vessel";
       close.addEventListener("click", () => this.guide.close());

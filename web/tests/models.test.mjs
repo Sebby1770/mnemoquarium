@@ -128,3 +128,69 @@ test("a first sighting pays exactly once and cannot be claimed through seabed", 
   assert.deepEqual(rig.game.profile.stats.sighted, ["humpback"]);
   rig.life.dispose();
 });
+
+const { Combat } = await import(browserModule("combat.js"));
+const { buildSubModel } = await import(browserModule("submodel.js"));
+const { UPGRADES } = await import("../src/config.js");
+function weaponRig() {
+  const rig = wildlifeRig(); rig.game.ambient = rig.life;
+  rig.game.creatures = { all: [], raycast: () => null, sphereHit: () => [] };
+  rig.game.fish = { all: [], raycast: () => null, scatter() {}, kill(f) { f.alive = false; } };
+  rig.combat = Object.create(Combat.prototype); rig.combat.game = rig.game;
+  rig.combat._sfx = () => {}; rig.combat._pushTrail = () => {};
+  rig.combat._expire = p => { p.active = false; };
+  return rig;
+}
+function placeWhale(rig, id = "humpback") {
+  const k = rig.life.kinds.find(k => k.id === id), a = k.animals[0];
+  a.position.set(0, -60, -25); a.scale = k.spec.size[0]; a.heading = Math.PI / 2;
+  a.alive = true; a.hp = a.hpMax = 300; a.radius = a.scale * .25;
+  return a;
+}
+function bolt(rig, kind = "harpoon") {
+  const p = {active:true,kind,armed:true,position:new THREE.Vector3(0,-60,0),dir:new THREE.Vector3(0,0,-1),speed:95,life:4,age:0,pierce:0,damage:14,travelled:0,object:new THREE.Object3D(),trail:{line:{visible:true}}};
+  rig.combat.projectiles = [p]; rig.combat._stepProjectiles(1);
+  return p;
+}
+test("harpoons hit every ambient species, whales die once and do not instantly respawn", () => {
+  for (const id of Object.keys(AMBIENT_KINDS)) {
+    const r = weaponRig(), a = placeWhale(r, id);
+    const p = bolt(r);
+    assert.equal(a.hp, 286, id); assert.equal(p.active, false);
+    assert.equal(r.life.damage(a, 1000), true);
+    assert.equal(r.life.damage(a, 1000), false);
+    assert.equal(r.events.filter(e => e[0] === "ambient:killed").length, 1);
+    r.life.update(5); r.life.update(1);
+    assert.equal(a.alive, false); assert.equal(a.hp, 0);
+    assert.ok(a.retryAt > r.life.time);
+    r.life.dispose();
+  }
+});
+test("seabed stops a projectile before wildlife and nearer fish take the hit", () => {
+  const r = weaponRig(), a = placeWhale(r);
+  r.game.world.heightAt = (x,z) => z < -10 ? -40 : -300;
+  bolt(r); assert.equal(a.hp, 300);
+  r.game.world.heightAt = () => -300;
+  const fish = {alive:true, species:{}, position:new THREE.Vector3(0,-60,-8)};
+  r.game.fish.raycast = () => ({fish,distance:8,point:fish.position.clone()});
+  bolt(r); assert.equal(fish.alive, false); assert.equal(a.hp, 300);
+  r.life.dispose();
+});
+test("torpedo direct hits damage wildlife exactly once and pulse reaches whales", () => {
+  const r = weaponRig(), a = placeWhale(r);
+  bolt(r, "torpedo"); assert.equal(a.hp, 187.5);
+  r.combat.pulseCone = new THREE.Object3D();
+  r.combat._firePulse(new THREE.Vector3(0,-60,0), new THREE.Vector3(0,0,-1));
+  assert.ok(a.hp < 187.5); assert.ok(a.stun > 0);
+  r.life.dispose();
+});
+test("refitted submarine geometry stays finite and within its usable footprint", () => {
+  for (const upgrades of [{}, Object.fromEntries(UPGRADES.map(u=>[u.id,u.costs.length]))]) {
+    const model = buildSubModel(upgrades);
+    model.group.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model.group), size = box.getSize(new THREE.Vector3());
+    assert.ok(size.x < 6 && size.z < 13 && size.y < 6, size.toArray().join(","));
+    model.group.traverse(o => {if(o.geometry) {assert.ok([...o.geometry.attributes.position.array].every(Number.isFinite)); o.geometry.dispose();}});
+    model.materials.forEach(m=>m.dispose());
+  }
+});

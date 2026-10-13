@@ -30,6 +30,7 @@ import {
   upgradeCost,
   applyUpgrade,
   describeStats,
+  TORPEDO_PRICE,
 } from "./progression.js";
 import { bearingOf, compassPoint, formatRange } from "./nav.js";
 import { AMBIENT_KINDS } from "./ambient.js";
@@ -297,6 +298,7 @@ export class HUD {
 
     this.tabBodies = {
       shipyard: pick("station-shipyard"),
+      armoury: pick("station-armoury"),
       market: pick("station-market"),
       drydock: pick("station-drydock"),
       log: pick("station-log"),
@@ -846,7 +848,7 @@ export class HUD {
     let state = "idle";
     if (progress > 0.001 || combat.beamTarget) state = "capture";
     else if (this.aim && this.aim.kind === "creature") state = "hostile";
-    else if (this.aim && this.aim.kind === "fish") state = "target";
+    else if (this.aim && ["fish", "wildlife"].includes(this.aim.kind)) state = "target";
     this.setAttr(this.crosshair, "chState", state, "state");
 
     // Label copy is refreshed by sampleAim(); here we only keep the bar honest.
@@ -879,19 +881,22 @@ export class HUD {
       this.camera.getWorldPosition(_eye);
       this.camera.getWorldDirection(_dir);
       const reach = Math.max(90, (Number(stats.captureRange) || SUB.captureRangeBase) * 2.5);
-      const hit = this.creatures.raycast(_eye, _dir, reach);
+      let hit = this.creatures.raycast(_eye, _dir, reach);
+      const wildlife = this.game.ambient?.raycast(_eye, _dir, reach);
+      if (wildlife && (!hit || wildlife.distance < hit.distance)) hit = wildlife;
       if (hit && hit.creature) {
         const c = hit.creature;
         aim = {
-          kind: "creature",
+          kind: c.wildlife ? "wildlife" : "creature",
           name: (c.type && c.type.name) || "something",
           meta: `${Math.max(0, Math.ceil(c.hp))} / ${Math.round(c.hpMax)} · ${formatRange(hit.distance)}`,
           hp: clamp01(c.hp / Math.max(1, c.hpMax)),
         };
-      } else {
+      }
+      {
         const range = Number(stats.captureRange) || SUB.captureRangeBase;
         const f = this.fish.raycast(_eye, _dir, range * 1.4);
-        if (f && f.fish) {
+        if (f && f.fish && (!hit || f.distance < hit.distance)) {
           aim = {
             kind: "fish",
             name: f.fish.species.name,
@@ -1326,8 +1331,37 @@ export class HUD {
     document.body.dataset.hold = want ? "open" : "shut";
   }
 
+  openService(name) {
+    if (!this.game.sub.docked || !["market", "shipyard", "armoury", "log"].includes(name)) return;
+    this.game.stationService = name;
+    this.game.setMode("station");
+    this.selectTab(name);
+  }
+
+  refreshArmoury() {
+    const p = this.game.profile, capacity = this.game.stats.torpedoAmmo;
+    const count = p.ammo?.torpedo || 0, missing = Math.max(0, capacity - count);
+    document.getElementById("ammo-status").textContent = capacity ? `${count} / ${capacity} torpedoes loaded` : "Launch tubes not fitted — visit the Shipyard";
+    document.querySelector(".ammo-slots").innerHTML = Array.from({length: capacity}, (_, i) => `<span class="${i < count ? "loaded" : ""}"></span>`).join("");
+    const one = document.getElementById("ammo-one"), fill = document.getElementById("ammo-fill");
+    one.disabled = !missing || p.credits < TORPEDO_PRICE;
+    fill.disabled = !missing || p.credits < missing * TORPEDO_PRICE;
+    fill.textContent = missing ? `Fill magazine · ${missing * TORPEDO_PRICE} cr` : "Magazine full";
+    one.onclick = () => this.game.buyAmmo(1);
+    fill.onclick = () => this.game.buyAmmo(missing);
+  }
+
   selectTab(name) {
-    const tab = this.tabBodies[name] ? name : "market";
+    const tab = this.game.stationService || "market";
+    const info = {
+      market: ["Exchange", "Sell your catch. Refit across the pool at the Shipyard; buy torpedoes at the Armoury."],
+      shipyard: ["Shipyard", "Engineering & refit · select a system, inspect the next mark, then install."],
+      armoury: ["Armoury", "Ordnance & resupply · ammunition for your fitted launch tubes."],
+      log: ["Research archive", "Your boat, your discoveries, and the life of this sea."],
+    }[tab];
+    document.getElementById("service-title").textContent = info[0];
+    document.getElementById("service-description").textContent = info[1];
+    this.panels.station.dataset.service = tab;
     if (tab === "shipyard" && this.game.workshop) this.game.workshop.refresh();
     this.activeTab = tab;
     for (const btn of this.stationTabs.querySelectorAll("button[data-tab]")) {
@@ -1339,6 +1373,7 @@ export class HUD {
   }
 
   refreshStation() {
+    this.refreshArmoury();
     this.refreshMarket();
     this.refreshDrydock();
     this.refreshManifest();

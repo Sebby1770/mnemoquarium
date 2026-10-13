@@ -123,7 +123,7 @@ export function objectiveFor(step, ctx) {
         out.target = ctx.station;
       } else if (cost && credits >= cost) {
         out.text = ctx.docked
-          ? "buy the pressure casing at the drydock"
+          ? "buy the pressure casing at the Shipyard"
           : `a casing is paid for · the Hull bears ${towards(here, ctx.station)}`;
         out.terminal = "drydock";
         if (!ctx.docked) out.target = ctx.station;

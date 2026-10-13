@@ -2,6 +2,14 @@
 
 All notable changes to **mnemoquarium** are documented here.
 
+## [1.12.0] - 2026-10-13 — Refit & resupply
+
+- Whales, squid, mythical wildlife and smaller animals now take weapon damage, show health when aimed at, flee when hurt and sink when defeated. Fish can also be struck; capturing still requires a beam or net.
+- Separate Shipyard, Armoury, Exchange and research terminals, with service checks at the transaction boundary. Torpedoes cost 75 credits each, with single-round and magazine-fill purchases.
+- Rebuilt the Shipyard around component categories, stat comparisons, prices, installation feedback, and a rotating fitted/next-mark preview.
+- Streamlined submarine sail, swept hydroplanes, curved armour petals, integrated cargo and battery fairings, and recessed launch tubes. Reduced film grain and colour fringing.
+- Added wildlife projectile, terrain occlusion, death/respawn, model geometry and ammunition economy regression coverage.
+
 ## [1.11.0] - 2026-10-03 — The research vessel
 
 - Rebuilt the walkable submarine as three connected bays: panoramic bridge, research and engineering, and aft crew quarters. Added detailed pressure bulkheads, brass portholes, live instruments, passive wildlife hydrophone, specimen canisters, modular cells, a berth and a wheel-lock airlock.

@@ -16,9 +16,17 @@ export class DockDetail {
     // Big, deliberately quiet signs replace the anonymous hangar walls.
     k.sign("THE HULL", "PELAGIC RESEARCH / TENDER STATION 07", 8.5, 0, 6.1, 10.9, Math.PI);
     k.sign("01 / ARRIVALS", "MOON POOL / PRESSURE LOCK", 4, -8.6, 3.3, 10.9, Math.PI);
-    k.sign("02 / WORKSHOP", "MODULAR REFITS / COMPONENT SERVICE", 4, 12.9, 5.65, -.4, -Math.PI / 2, "#efc183");
+    k.sign("02 / SHIPYARD", "MODULAR REFITS / COMPONENT SERVICE", 4, 12.9, 5.65, -.4, -Math.PI / 2, "#efc183");
     k.sign("03 / OBSERVATORY", "SPECIMEN ARCHIVE / FIELD RESEARCH", 4.5, 0, 4.65, -10.93);
-    k.sign("MARKET / STORES", "SELL SPECIMENS / RESUPPLY", 3.5, -12.9, 3.1, -8.6, Math.PI / 2);
+    k.sign("EXCHANGE", "SPECIMENS / CARGO SALES", 3.5, -12.9, 3.1, -8.6, Math.PI / 2);
+    k.sign("04 / ARMOURY", "TORPEDO MAGAZINE / ORDNANCE", 3.6, -12.9, 3.4, 6.3, Math.PI / 2, "#efc183");
+    // A protected rack of spare torpedoes gives resupply its own physical home.
+    k.box(.9, .15, 3.8, navy, -11.9, .25, 6, true);
+    for (const z of [4.8, 6, 7.2]) {
+      k.cylinder(.2, 1.9, steel, -11.9, 1.35, z);
+      k.cylinder(.205, .16, orange, -11.9, 1.8, z);
+      k.ring(.24, .04, rubber, -11.9, .5, z, [Math.PI / 2, 0, 0]);
+    }
     // Framed wall bases and illuminated strips give the huge room a human scale.
     for (const side of [-1, 1]) {
       k.box(.14, .9, 21.8, navy, side * 12.92, .45, 0);
